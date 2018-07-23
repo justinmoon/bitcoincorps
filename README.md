@@ -3,7 +3,7 @@
 
 ### Step 0: Windows
 
-If you plan to use a windows computer, send Justin a direct message.
+If you plan to use a windows computer, send Justin a direct message. These instruction assume are using MacOS or Linux.
 
 ### Step 1: Git
 
