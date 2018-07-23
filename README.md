@@ -21,11 +21,11 @@ To check whether you have it installed go to your terminal, type “git” and h
 
 Go to your terminal, type “python3” and hit enter. If you don’t see a “python prompt” (see pic below) then you need to [install Python 3](https://docs.python-guide.org/starting/installation/). Hit control-d or call the python `exit()` function to exit.
 
-![image](./images/python.png)
+![image](./images/prompt.png)
 
-### Step 4: Install jupyter notebook
+### Step 4: Install Jupyter Notebook
 
-Execute the following command in your terminal to install jupyter
+Execute the following command in your terminal to install jupyter:
 
 ```
 python3 -m pip install jupyter
@@ -33,7 +33,7 @@ python3 -m pip install jupyter
 
 ### Step 5: Clone the Project with Git
 
-Execute the following command in your terminal to clone the course and access the introductory “Lesson 0”
+Execute the following command in your terminal to clone the course and access the introductory “Lesson 0”:
 
 ```
 git clone https://github.com/superquest/bitcoincorps.git
