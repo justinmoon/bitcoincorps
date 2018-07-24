@@ -23,21 +23,15 @@ Go to your terminal, type “python3” and hit enter. If you don’t see a “p
 
 ![image](./images/prompt.png)
 
-### Step 4: Install Jupyter Notebook
 
-Execute the following command in your terminal to install jupyter:
-
-```
-python3 -m pip install -r requirements.txt
-```
-
-### Step 5: Clone the Project with Git
+### Step 4: Clone the Project with Git, install dependencies, and run it
 
 Execute the following command in your terminal to clone the course and access the introductory “Lesson 0”:
 
 ```
 git clone https://github.com/superquest/bitcoincorps.git
 cd bitcoincorps
+python3 -m pip install -r requirements.txt
 jupyter notebook
 ```
 
