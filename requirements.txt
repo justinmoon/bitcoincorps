@@ -1,3 +1,4 @@
 jupyter==1.0.0
 ipytest==0.2.2
 pytest==3.6.3
+jupyterhub==0.9.1
