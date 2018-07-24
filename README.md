@@ -28,7 +28,7 @@ Go to your terminal, type “python3” and hit enter. If you don’t see a “p
 Execute the following command in your terminal to install jupyter:
 
 ```
-python3 -m pip install jupyter
+python3 -m pip install -r requirements.txt
 ```
 
 ### Step 5: Clone the Project with Git
