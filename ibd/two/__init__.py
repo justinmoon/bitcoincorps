@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
+from ipaddress import ip_address
 
 from tabulate import tabulate
 
@@ -9,9 +10,11 @@ NETWORK_MAGIC = 0xD9B4BEF9
 
 
 def fmt(bytestr):
+    # FIXME
+    string = str(bytestr)
     maxlen = 500
-    msg = str(bytestr[:maxlen])
-    if len(bytestr) > maxlen:
+    msg = string[:maxlen]
+    if len(string) > maxlen:
         msg += "..."
     return re.sub("(.{80})", "\\1\n", msg, 0, re.DOTALL)
 
@@ -150,8 +153,8 @@ class Address:
         else:
             time = read_timestamp(stream)
         services = read_services(stream)
-        ip = stream.read(16)
-        port = read_int(stream, 2, byte_order='big')
+        ip = read_ip(stream)
+        port = read_port(stream)
         return cls(services, ip, port, time)
     
     def __repr__(self):
@@ -188,6 +191,55 @@ class Packet:
     def __str__(self):
         headers = ["Packet", ""]
         rows = [["command", fmt(self.command)], ["payload", fmt(self.payload)]]
+        return tabulate(rows, headers, tablefmt="grid")
+
+    def __repr__(self):
+        return f"<Message command={self.command}>"
+
+class VersionMessage:
+
+    command = b"version"
+
+    def __init__(self, version, services, timestamp, addr_recv, addr_from, 
+                 nonce, user_agent, start_height, relay):
+        self.version = version
+        self.services = services
+        self.timestamp = timestamp
+        self.addr_recv = addr_recv
+        self.addr_from = addr_from
+        self.nonce = nonce
+        self.user_agent = user_agent
+        self.start_height = start_height
+        self.relay = relay
+
+    @classmethod
+    def from_bytes(cls, payload):
+        stream = BytesIO(payload)
+        version = read_int(stream, 4)
+        services = read_services(stream)
+        timestamp = read_timestamp(stream)
+        addr_recv = Address.from_stream(stream, version_msg=True)
+        addr_from = Address.from_stream(stream, version_msg=True)
+        nonce = read_int(stream, 8)
+        user_agent = read_var_str(stream)
+        start_height = read_int(stream, 4)
+        relay = read_bool(stream)
+        return cls(
+            version,
+            services,
+            timestamp,
+            addr_recv,
+            addr_from,
+            nonce,
+            user_agent,
+            start_height,
+            relay,
+        )
+
+    def __str__(self):
+        headers = ["VersionMessage", ""]
+        attrs = ['version', 'services', 'timestamp', 'addr_recv', 'addr_from', 'nonce', 'user_agent', 'start_height', 'relay']
+        rows = [[attr, fmt(getattr(self, attr))] for attr in attrs]
         return tabulate(rows, headers, tablefmt="grid")
 
     def __repr__(self):
