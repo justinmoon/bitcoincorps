@@ -43,6 +43,7 @@ def get_addr_tuples():
 
 def connect_many(addrs):
     global succeeded, failed, pkts, total
+    total = len(addrs)
 
     for addr_tuple in addrs:
 
@@ -60,7 +61,7 @@ def connect_many(addrs):
             failed += 1
 
         succeeded += 1
-        print(f"{succeeded} / {total} ({failed} failed)")
+        print(f"{succeeded} / {total} tasks succeeded ({failed} failed)")
         sock.close()
 
 
@@ -71,6 +72,10 @@ def write_payloads(packets):
 
 
 def cleanup():
+    global succeeded, failed, pkts, total
+    pkts = []
+    succeeded = failed = total = 0
+
     try:
         os.remove("versions.txt")
     except FileNotFoundError:
@@ -113,13 +118,15 @@ async def connect(host, port, index):
     succeeded += 1
     pkts.append(pkt)
     if succeeded % 500 == 0:
-        print(f"{succeeded} / {total} ({failed} failed)")
+        print(f"{succeeded} / {total} tasks succeeded ({failed} failed)")
         write_payloads(pkts)
         pkts = []
 
 
 def async_connect_many(addrs):
-    tasks = [connect(ip, port, index) for index, (ip, port) in enumerate(addrs)]
+    global total
+    total = len(addrs)
+    tasks = [asyncio.create_task(connect(ip, port, index)) for index, (ip, port) in enumerate(addrs)]
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.gather(*tasks))
 
@@ -133,7 +140,6 @@ if __name__ == "__main__":
     cleanup()
     addrs = get_addr_tuples()
 
-    total = len(addrs)
 
     if arg == "sync":
         connect_many(addrs)
