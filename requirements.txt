@@ -62,3 +62,4 @@ webencodings==0.5.1
 widgetsnbextension==3.3.0
 jupyterlab==0.32.1
 jupyterlab-launcher==0.10.5
+tabulate==0.8.2
