@@ -89,6 +89,25 @@ def graph_tasks(start_stop_tups):
     plt.xlabel("Seconds")
     return plt
 
+
+def connect_many_threaded(addrs):
+    # create a queue
+    # add tasks to the queue
+    # spawn n workers
+    
+    # lets' just run 10 threads which print out results
+    threads = []
+    for addr in addrs[:10]:
+        thread = threading.Thread(target=lambda addr: print(connect_synchronous(addr)), args=(addr,))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+
+
 if __name__ == "__main__":
     addrs = get_addrs()
-    timed(connect_many_threadpool, addrs)
+    # timed(connect_many_threadpool, addrs)
+    connect_many_threaded(addrs)
