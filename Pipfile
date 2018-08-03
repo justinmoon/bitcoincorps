@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+requests = "*"
+jupyter = "*"
+matplotlib = "*"
+numpy = "*"
+tabulate = "*"
+
+[dev-packages]
+black = "*"
+isort = "*"
+mypy = "*"
+jedi = "*"
+python-language-server = "*"
+"jupyter-repo2docker" = "*"
+
+[requires]
+python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
