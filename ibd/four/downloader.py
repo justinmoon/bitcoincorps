@@ -3,6 +3,7 @@
 # people won't understand / believe how this is happening in a completely different way
 import asyncio
 import concurrent.futures
+import multiprocessing
 import os
 import queue
 import random
@@ -54,7 +55,9 @@ def timed(func, *args, **kwargs):
     return (result, start, stop)
 
 
-def connect_synchronous(addr):
+def connect_synchronous(addr, log=False):
+    if log:
+        _log()
     try:
         sock = socket.socket()
         sock.settimeout(1)
@@ -71,6 +74,54 @@ def connect_synchronous(addr):
 def connect_many_synchronous(addrs):
     for addr in addrs:
         connect(addr)
+
+
+def _log():
+    print(
+        "PID: %s, Process Name: %s, Thread Name: %s"
+        % (
+            os.getpid(),
+            multiprocessing.current_process().name,
+            threading.current_thread().name,
+        )
+    )
+
+
+def tutsplus(addrs):
+    # https://code.tutsplus.com/articles/introduction-to-parallel-and-concurrent-programming-in-python--cms-28612
+    NUM_WORKERS = 4
+    addrs = addrs[:4]
+
+    start_time = time.time()
+    for addr in addrs:
+        connect_synchronous(addr, log=True)
+    end_time = time.time()
+
+    print("Serial time=", end_time - start_time)
+
+    start_time = time.time()
+    threads = [
+        threading.Thread(target=connect_synchronous, args=(addr,), kwargs={"log": True})
+        for addr in addrs
+    ]
+    [thread.start() for thread in threads]
+    [thread.join() for thread in threads]
+    end_time = time.time()
+
+    print("Threads time=", end_time - start_time)
+
+    start_time = time.time()
+    processes = [
+        multiprocessing.Process(
+            target=connect_synchronous, args=(addr,), kwargs={"log": True}
+        )
+        for addr in addrs
+    ]
+    [process.start() for process in processes]
+    [process.join() for process in processes]
+    end_time = time.time()
+
+    print("Parallel time=", end_time - start_time)
 
 
 def connect_many_threaded_list(addrs):
@@ -171,4 +222,4 @@ def connect_many_threaded_queue(addrs, num_threads=8):
 if __name__ == "__main__":
     addrs = get_addrs()
     # timed(connect_many_threadpool, addrs)
-    connect_many_threaded_list_with_return_vals(addrs)
+    tutsplus(addrs)
