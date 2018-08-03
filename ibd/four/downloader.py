@@ -1,4 +1,6 @@
 # TODO timer generator https://youtu.be/D1twn9kLmYg?t=19m46s
+# TODO: print which thread all of these are in.
+# people won't understand / believe how this is happening in a completely different way
 import asyncio
 import time
 import os
@@ -7,6 +9,7 @@ import socket
 import sys
 import threading
 import concurrent.futures
+import queue
 from functools import wraps
 
 import requests
@@ -71,6 +74,7 @@ def connect_many_threadpool(addrs):
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
         futures = [pool.submit(timed, connect_synchronous, addr) for addr in addrs]
         result = concurrent.futures.wait(futures)
+        # could also use add_done_callback
         done, not_done = result
         return done
 
@@ -90,13 +94,34 @@ def graph_tasks(start_stop_tups):
     return plt
 
 
-def connect_many_threaded(addrs):
+def connect_many_threaded_queue(addrs, num_threads=8):
     # create a queue
+    q = queue.Queue()
+
     # add tasks to the queue
+    for addr in addrs[:10]:
+        q.put(addr)
+
     # spawn n workers
-    
-    # lets' just run 10 threads which print out results
     threads = []
+    while not q.empty():
+        # FIXME
+        addr = q.get()
+        thread = threading.Thread(target=lambda addr: print(connect_synchronous(addr)), args=(addr,))
+        threads.append(thread)
+        thread.start()
+
+    # wait for all threads to finish
+    for thread in threads:
+        thread.join()
+
+
+def connect_many_threaded_list(addrs):
+    threads = []
+
+    # spawn 10 threads and start them
+    # append the threads to `threads` list so that we can wait for them to finish
+    # one problem -- can't get the results!
     for addr in addrs[:10]:
         thread = threading.Thread(target=lambda addr: print(connect_synchronous(addr)), args=(addr,))
         threads.append(thread)
@@ -106,8 +131,34 @@ def connect_many_threaded(addrs):
         thread.join()
 
 
+def connect_many_threaded_list_with_return_vals(addrs):
+    # https://stackoverflow.com/questions/6893968/how-to-get-the-return-value-from-a-thread-in-python
+    # second answer here
+
+    results = []
+    threads = []
+
+    def connect_synchronous_and_record_return_value(addr, results):
+        # get the version response from peer
+        # append it to a python list that lives in the main thread
+        result = connect_synchronous(addr)
+        results.append(result)
+
+    # spawn 10 threads and start them
+    # append the threads to `threads` list so that we can wait for them to finish
+    for addr in addrs[:10]:
+        thread = threading.Thread(target=connect_synchronous_and_record_return_value, args=(addr, results))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    for result in results:
+        print(result)
+
 
 if __name__ == "__main__":
     addrs = get_addrs()
     # timed(connect_many_threadpool, addrs)
-    connect_many_threaded(addrs)
+    connect_many_threaded_list_with_return_vals(addrs)
