@@ -48,14 +48,17 @@ def timed(func, *args, **kwargs):
     return (result, start, stop)
 
 def connect_synchronous(addr):
-    sock = socket.socket()
-    sock.settimeout(1)
-    sock.connect(addr)
-    sock.send(VERSION)
-    pkt = Packet.from_socket(sock)
-    msg = VersionMessage.from_bytes(pkt.payload)
-    sock.close()
-    return msg
+    try:
+        sock = socket.socket()
+        sock.settimeout(1)
+        sock.connect(addr)
+        sock.send(VERSION)
+        pkt = Packet.from_socket(sock)
+        msg = VersionMessage.from_bytes(pkt.payload)
+        sock.close()
+        return msg
+    except:
+        return None
 
 
 def connect_many_synchronous(addrs):
@@ -64,13 +67,12 @@ def connect_many_synchronous(addrs):
 
 def connect_many_threadpool(addrs):
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
-        futures = [pool.submit(connect_synchronous, addr) for addr in addrs]
+        futures = [pool.submit(timed, connect_synchronous, addr) for addr in addrs]
         result = concurrent.futures.wait(futures)
         done, not_done = result
         return done
 
 def threadpool_result_to_start_stop_tups(result):
-    result = result[0]
     results = [f.result() for f in result if f.result() is not None]
     start_stop = [(start, stop) for (msg, start, stop) in results]
     start_stop = sorted(start_stop, key=lambda tup: tup[0])
