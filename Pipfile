@@ -9,6 +9,7 @@ jupyter = "*"
 matplotlib = "*"
 numpy = "*"
 tabulate = "*"
+curio = "*"
 
 [dev-packages]
 black = "*"

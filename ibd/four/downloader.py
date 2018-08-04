@@ -13,12 +13,14 @@ import threading
 import time
 from functools import wraps
 
+import curio
+import curio.socket as curio_socket
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
 
-from ibd.two.complete import (Packet, VersionMessage, bytes_to_int,
-                              calculate_checksum)
+from ibd.four.complete import Packet
+from ibd.two.complete import VersionMessage, bytes_to_int, calculate_checksum
 
 # FIXME: overwriting import
 NETWORK_MAGIC = b"\xf9\xbe\xb4\xd9"
@@ -89,8 +91,7 @@ def _log():
 
 def tutsplus(addrs):
     # https://code.tutsplus.com/articles/introduction-to-parallel-and-concurrent-programming-in-python--cms-28612
-    NUM_WORKERS = 4
-    addrs = addrs[:4]
+    addrs = addrs[:8]
 
     start_time = time.time()
     for addr in addrs:
@@ -123,6 +124,14 @@ def tutsplus(addrs):
 
     print("Parallel time=", end_time - start_time)
 
+    ### add this at the end ###
+    start_time = time.time()
+    run_connect_many_async(addrs)
+        print(pkt)
+    end_time = time.time()
+
+    print("Async/Await time=", end_time - start_time)
+
 
 def connect_many_threaded_list(addrs):
     threads = []
@@ -152,6 +161,7 @@ def connect_many_threaded_list_with_return_vals(addrs):
         # get the version response from peer
         # append it to a python list that lives in the main thread
         result = connect_synchronous(addr)
+        # append is thread safe https://stackoverflow.com/a/18568017/2542016
         results.append(result)
 
     # spawn 10 threads and start them
@@ -217,6 +227,38 @@ def connect_many_threaded_queue(addrs, num_threads=8):
     # wait for all threads to finish
     for thread in threads:
         thread.join()
+
+
+async def connect_async(addr):
+    try:
+        sock = curio_socket.socket()
+        # curio.timeout_after(sock.connect, addr)
+        await sock.connect(addr)
+        await sock.send(VERSION)
+        pkt = await Packet.async_from_socket(sock)
+        msg = VersionMessage.from_bytes(pkt.payload)
+        await sock.close()
+        return msg
+    except Exception as e:
+        print(e)
+        return None
+
+
+async def connect_many_async(addrs):
+    async with curio.TaskGroup() as g:
+        # Create some tasks
+        for addr in addrs:
+            await g.spawn(connect_async, addr)
+        async for task in g:
+            try:
+                result = await task.join()
+                print("Success:", result)
+            except curio.TaskError as e:
+                print("Failed:", e)
+
+
+def run_connect_many_async(addrs):
+    curio.run(connect_many_async, addrs)
 
 
 if __name__ == "__main__":
