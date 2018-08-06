@@ -1,3 +1,4 @@
+from io import BytesIO
 from hashlib import sha256
 import re
 
@@ -57,6 +58,15 @@ def calculate_checksum(payload_bytes):
 def read_payload(sock, length):
     payload = sock.recv(length)
     return payload
+
+
+class FakeSocket:
+
+    def __init__(self, bytes_):
+        self.stream = BytesIO(bytes_)
+
+    def recv(self, n):
+        return self.stream.read(n)
 
 
 # this used to be called "Message"
