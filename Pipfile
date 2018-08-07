@@ -10,17 +10,20 @@ matplotlib = "*"
 numpy = "*"
 tabulate = "*"
 curio = "*"
-
-[dev-packages]
 black = "*"
 isort = "*"
 mypy = "*"
 jedi = "*"
-python-language-server = "*"
+python-language-server = {version = "*", extras = ["all"]}
 "jupyter-repo2docker" = "*"
+requests-mock = "*"
+ipytest = "*"
+pytest = "*"
+line-profiler = "*"
+nbdime = "*"
 
 [requires]
-python_version = "3.7"
+python_version = "3.6"
 
 [pipenv]
 allow_prereleases = true
