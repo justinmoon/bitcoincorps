@@ -21,6 +21,7 @@ ipytest = "*"
 pytest = "*"
 line-profiler = "*"
 nbdime = "*"
+nbstripout = "*"
 
 [requires]
 python_version = "3.6"
