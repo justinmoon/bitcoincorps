@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import requests
 
-from ibd.four.complete import Packet
+from ibd.four.complete import Packet, async_read_message, read_message
 from ibd.two.complete import VersionMessage, bytes_to_int, calculate_checksum
 
 # FIXME: overwriting import
@@ -65,11 +65,56 @@ def connect_synchronous(addr, log=False):
         sock.settimeout(1)
         sock.connect(addr)
         sock.send(VERSION)
+        download(sock)
         pkt = Packet.from_socket(sock)
         msg = VersionMessage.from_bytes(pkt.payload)
         sock.close()
         return msg
     except:
+        return None
+
+
+async def connect_async(addr):
+    try:
+        sock = curio_socket.socket()
+        # curio.timeout_after(sock.connect, addr)
+        await sock.connect(addr)
+        await sock.send(VERSION)
+        pkt = await Packet.async_from_socket(sock)
+        msg = VersionMessage.from_bytes(pkt.payload)
+        await sock.close()
+        return msg
+    except Exception as e:
+        print(e)
+        return None
+
+
+def download(addr):
+    if log:
+        _log()
+    try:
+        sock = socket.socket()
+        sock.settimeout(1)
+        sock.connect(addr)
+        sock.send(VERSION)
+        download(sock)
+        msg_bytes = read_msg_bytes(sock)
+        sock.close()
+        return msg
+    except:
+        return None
+
+
+async def async_download(addrs):
+    try:
+        sock = curio_socket.socket()
+        # curio.timeout_after(sock.connect, addr)
+        await sock.connect(addr)
+        await sock.send(VERSION)
+        msg_bytes = await async_read_msg_bytes(sock)
+        await sock.close()
+        return msg_bytes
+    except Exception as e:
         return None
 
 
@@ -127,7 +172,6 @@ def tutsplus(addrs):
     ### add this at the end ###
     start_time = time.time()
     run_connect_many_async(addrs)
-        print(pkt)
     end_time = time.time()
 
     print("Async/Await time=", end_time - start_time)
@@ -229,19 +273,6 @@ def connect_many_threaded_queue(addrs, num_threads=8):
         thread.join()
 
 
-async def connect_async(addr):
-    try:
-        sock = curio_socket.socket()
-        # curio.timeout_after(sock.connect, addr)
-        await sock.connect(addr)
-        await sock.send(VERSION)
-        pkt = await Packet.async_from_socket(sock)
-        msg = VersionMessage.from_bytes(pkt.payload)
-        await sock.close()
-        return msg
-    except Exception as e:
-        print(e)
-        return None
 
 
 async def connect_many_async(addrs):
