@@ -36,6 +36,12 @@ def async_handshake(address):
     pass
 
 
+def encode_command(cmd):
+    padding_needed = 12 - len(cmd)
+    padding = b"\x00" * padding_needed
+    return cmd + padding
+
+
 def fmt(bytestr):
     # FIXME
     string = str(bytestr)
@@ -255,6 +261,18 @@ class VersionMessage:
         return f"<Message command={self.command}>"
 
 
+class VerackMessage:
+
+    command = b"verack"
+
+    @classmethod
+    def from_bytes(cls, s):
+        return cls()
+
+    def to_bytes(self):
+        return b""
+
+
 async def async_read_magic(sock):
     magic_bytes = await sock.recv(4)
     magic = bytes_to_int(magic_bytes)
@@ -374,6 +392,14 @@ class Packet:
             )
 
         return cls(command, payload)
+
+    def to_bytes(self):
+        result = int_to_bytes(NETWORK_MAGIC, 4)  # FIXME
+        result += encode_command(self.command)
+        result += int_to_bytes(len(self.payload), 4)
+        result += calculate_checksum(self.payload)[:4]
+        result += self.payload
+        return result
 
     def __str__(self):
         headers = ["Packet", ""]

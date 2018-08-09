@@ -1,7 +1,11 @@
-from ibd.four.complete import Packet
-from ibd.two.complete import *
+import ipaddress
 
-OUR_VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9e\x7f\x11\x01\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x93AU[\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00rV\xc5C\x9b:\xea\x89\x14/some-cool-software/\x01\x00\x00\x00\x01'
+import curio
+
+from develop.ibd import *
+
+# FIXME
+VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9e\x7f\x11\x01\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x93AU[\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00rV\xc5C\x9b:\xea\x89\x14/some-cool-software/\x01\x00\x00\x00\x01'
 
 TIMEOUT = 3
 
@@ -35,7 +39,7 @@ def get_version_message(address_tuple):
     # FIXME ugly
     # FIXME onion addresses
     ipv4 = ip_address(address_tuple[0]).version == 4
-    param = socket.AF_INET if ipv4 else socket.AF_INET6
+    param = curio.socket.AF_INET if ipv4 else curio.socket.AF_INET6
 
     sock = socket.socket(param, socket.SOCK_STREAM)
     sock.settimeout(3)  # wait 3 second for connections / responses
@@ -47,3 +51,31 @@ def get_version_message(address_tuple):
     return version_message
 
 
+async def connect_async(address):
+    ipv4 = ip_address(address[0]).version == 4
+    param = curio.socket.AF_INET if ipv4 else curio.socket.AF_INET6
+    sock = curio.socket.socket(param)
+    # curio.timeout_after(sock.connect, addr)
+    await sock.connect(address)
+    await sock.send(VERSION)
+
+    while True:
+        pkt = await Packet.async_from_socket(sock)
+        print(pkt)
+        if pkt.command == b"version":
+            msg = VersionMessage.from_bytes(pkt.payload)
+            # TODO send verack
+            res = Packet(command=b"verack", payload=b"")
+            await sock.send(res.to_bytes())
+        elif pkt.command == b"verack":
+            msg = VerackMessage.from_bytes(pkt.payload)
+        else:
+            print(f"unhandled {pkt.command}")
+
+    await sock.close()
+    return msg
+
+
+if __name__ == "__main__":
+    address = ("85.234.209.217", 8333)
+    curio.run(connect_async, address)
