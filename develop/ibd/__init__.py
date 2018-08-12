@@ -8,6 +8,7 @@ from tabulate import tabulate
 
 NETWORK_MAGIC = 0xD9B4BEF9
 
+
 def read_pkt_bytes(sock):
     magic = sock.read(4)
     if magic != NETWORK_MAGIC:
@@ -110,8 +111,8 @@ def read_bool(stream):
     boolean = bool(integer)
 
 
-def read_timestamp(stream):
-    timestamp = read_int(stream, 8)
+def read_timestamp(stream, n):
+    timestamp = read_int(stream, n)
     return datetime.fromtimestamp(timestamp)
 
 
@@ -180,7 +181,7 @@ class Address:
         if version_msg:
             time = None
         else:
-            time = read_timestamp(stream)
+            time = read_timestamp(stream, 4)
         services = read_services(stream)
         ip = read_ip(stream)
         port = read_port(stream)
@@ -188,6 +189,26 @@ class Address:
 
     def __repr__(self):
         return f"<Address {self.ip}:{self.port}>"
+
+
+class AddrMessage:
+
+    command = b"addr"
+
+    def __init__(self, address_list):
+        self.address_list = address_list
+
+    @classmethod
+    def from_bytes(cls, bytes_):
+        stream = BytesIO(bytes_)
+        count = read_var_int(stream)
+        address_list = []
+        for _ in range(count):
+            address_list.append(Address.from_stream(stream))
+        return cls(address_list)
+
+    def __repr__(self):
+        return f"<AddrMessage {len(self.address_list)}>"
 
 
 class VersionMessage:
@@ -221,7 +242,7 @@ class VersionMessage:
         stream = BytesIO(payload)
         version = read_int(stream, 4)
         services = read_services(stream)
-        timestamp = read_timestamp(stream)
+        timestamp = read_timestamp(stream, 8)
         addr_recv = Address.from_stream(stream, version_msg=True)
         addr_from = Address.from_stream(stream, version_msg=True)
         nonce = read_int(stream, 8)
@@ -338,7 +359,7 @@ class Packet:
 
         calculated_checksum = calculate_checksum(payload)
         if calculated_checksum != checksum:
-            raise RuntimeError("Checksums don't match")
+            raise RuntimeError(f"Checksums don't match on {command}")
 
         if payload_length != len(payload):
             raise RuntimeError(
@@ -361,7 +382,7 @@ class Packet:
 
         calculated_checksum = calculate_checksum(payload)
         if calculated_checksum != checksum:
-            raise RuntimeError("Checksums don't match")
+            raise RuntimeError(f"Checksums don't match on {command}")
 
         if payload_length != len(payload):
             raise RuntimeError(
@@ -383,7 +404,7 @@ class Packet:
 
         calculated_checksum = calculate_checksum(payload)
         if calculated_checksum != checksum:
-            raise RuntimeError("Checksums don't match")
+            raise RuntimeError(f"Checksums don't match on {command}")
 
         if payload_length != len(payload):
             raise RuntimeError(

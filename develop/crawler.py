@@ -9,6 +9,8 @@ VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9
 
 TIMEOUT = 3
 
+connections = {}
+
 
 def make_worker(func, in_q, out_q):
     def wrapped():
@@ -67,7 +69,8 @@ async def loop(sock):
                 getaddr = Packet(command=b"getaddr", payload=b"")
                 await sock.send(getaddr.to_bytes())
             elif pkt.command == b"addr":
-                print(pkt.payload)
+                msg = AddrMessage.from_bytes(pkt.payload)
+                print(msg)
         except RuntimeError as e:
             print(e)
             continue
