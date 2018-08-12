@@ -51,6 +51,31 @@ def get_version_message(address_tuple):
     return version_message
 
 
+async def loop(sock):
+    while True:
+        try:
+            pkt = await Packet.async_from_socket(sock)
+            print(f"received {pkt.command}")
+            if pkt.command == b"version":
+                msg = VersionMessage.from_bytes(pkt.payload)
+                # TODO send verack
+                res = Packet(command=b"verack", payload=b"")
+                await sock.send(res.to_bytes())
+            elif pkt.command == b"verack":
+                msg = VerackMessage.from_bytes(pkt.payload)
+                await curio.sleep(.5)
+                getaddr = Packet(command=b"getaddr", payload=b"")
+                await sock.send(getaddr.to_bytes())
+            elif pkt.command == b"addr":
+                print(pkt.payload)
+        except RuntimeError as e:
+            print(e)
+            continue
+        except Exception as e:
+            print("Unhandled exception:", e)
+            break
+
+
 async def connect_async(address):
     ipv4 = ip_address(address[0]).version == 4
     param = curio.socket.AF_INET if ipv4 else curio.socket.AF_INET6
@@ -58,22 +83,8 @@ async def connect_async(address):
     # curio.timeout_after(sock.connect, addr)
     await sock.connect(address)
     await sock.send(VERSION)
-
-    while True:
-        pkt = await Packet.async_from_socket(sock)
-        print(pkt)
-        if pkt.command == b"version":
-            msg = VersionMessage.from_bytes(pkt.payload)
-            # TODO send verack
-            res = Packet(command=b"verack", payload=b"")
-            await sock.send(res.to_bytes())
-        elif pkt.command == b"verack":
-            msg = VerackMessage.from_bytes(pkt.payload)
-        else:
-            print(f"unhandled {pkt.command}")
-
+    await loop(sock)
     await sock.close()
-    return msg
 
 
 if __name__ == "__main__":

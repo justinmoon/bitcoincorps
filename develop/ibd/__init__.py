@@ -8,7 +8,6 @@ from tabulate import tabulate
 
 NETWORK_MAGIC = 0xD9B4BEF9
 
-
 def read_pkt_bytes(sock):
     magic = sock.read(4)
     if magic != NETWORK_MAGIC:
