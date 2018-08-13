@@ -1,11 +1,13 @@
+from collections import Counter
+
 from tinydb import Query, TinyDB
 
-pdb = TinyDB('db.json')
-edb = TinyDB('errors.json')
+pdb = TinyDB("db.json")
 
 payloads = pdb.all()
-errors = edb.all()
 
-print(f"#errors={len(errors)}")
-print(f"#payloads={len(payloads)/2}")
+report = Counter([p["type"] for p in payloads]).most_common()
+errors = Counter([p["data"] for p in payloads if p["type"] == "error"]).most_common()
 
+print(report)
+print(errors)
