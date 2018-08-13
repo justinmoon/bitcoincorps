@@ -1,6 +1,7 @@
 import datetime
 import queue
 import socket
+import time
 from ipaddress import ip_address
 
 import tinydb
@@ -11,13 +12,17 @@ VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9
 
 q = queue.Queue()
 db = tinydb.TinyDB("db.json")
+contacted = set()
 
 
 def get_payloads(sock):
+    start = time.time()
+    global contacted
     version_payload = None
     addr_payload = None
     while not (version_payload and addr_payload):
         pkt = Packet.from_socket(sock)
+        print(pkt.command)
         if pkt.command == b"version":
             version_payload = pkt.payload
             res = Packet(command=b"verack", payload=b"")
@@ -31,7 +36,18 @@ def get_payloads(sock):
                 # wait until they send us a useful list of addrs ...
                 continue
             else:
+                for address in addr_message.address_list:
+                    ip = (
+                        address.ip.ipv4_mapped.compressed
+                        if address.ip.ipv4_mapped
+                        else address.ip.compressed
+                    )
+                    tup = (ip, address.port)  # FIXME
+                    if tup not in contacted:
+                        q.put(tup)
                 addr_payload = pkt.payload
+        if time.time() - start > 30:
+            raise Exception("taking too long")
     return version_payload, addr_payload
 
 
@@ -69,6 +85,7 @@ def connect(address):
 
 
 def crawl():
+    global contacted
     successes = 0
     failures = 0
     while True:
@@ -78,11 +95,12 @@ def crawl():
             version_payload, addr_payload = get_payloads(sock)
             save_version_payload(address, version_payload)
             save_addr_payload(address, addr_payload)
+            contacted.add(address)
             successes += 1
         except Exception as e:
             save_error(address, e)
             failures += 1
-        print(f"{successes}/{successes+failures}")
+        print(f"success={successes} failure={failures} queue={q.qsize()}")
 
 
 def main(addresses):
