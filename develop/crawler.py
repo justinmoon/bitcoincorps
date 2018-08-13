@@ -9,7 +9,7 @@ VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9
 
 TIMEOUT = 3
 
-connections = {}
+connected_to = []
 
 
 def make_worker(func, in_q, out_q):
@@ -53,11 +53,11 @@ def get_version_message(address_tuple):
     return version_message
 
 
-async def loop(sock):
+async def loop(sock, a):
     while True:
         try:
             pkt = await Packet.async_from_socket(sock)
-            print(f"received {pkt.command}")
+            print(f"received {pkt.command} from {a}")
             if pkt.command == b"version":
                 msg = VersionMessage.from_bytes(pkt.payload)
                 # TODO send verack
@@ -70,7 +70,15 @@ async def loop(sock):
                 await sock.send(getaddr.to_bytes())
             elif pkt.command == b"addr":
                 msg = AddrMessage.from_bytes(pkt.payload)
-                print(msg)
+
+                for address in msg.address_list[:3]:
+                    tup = (address.ip.compressed, address.port)
+                    print("connecting to", tup)
+                    try:
+                        await curio.spawn(connect_async, tup)
+                    except Exception as e:
+                        print(e)
+                        print("failed connecting to", tup)
         except RuntimeError as e:
             print(e)
             continue
@@ -86,10 +94,16 @@ async def connect_async(address):
     # curio.timeout_after(sock.connect, addr)
     await sock.connect(address)
     await sock.send(VERSION)
-    await loop(sock)
+    connected_to.append(address)
+    await loop(sock, address)
+    connected_to.remove(address)  # FIXME: this won't happen if there's an exception
     await sock.close()
 
 
+async def main(address):
+    await curio.spawn(connect_async, address)
+
+
 if __name__ == "__main__":
-    address = ("85.234.209.217", 8333)
+    address = ("46.226.18.135", 8333)
     curio.run(connect_async, address)

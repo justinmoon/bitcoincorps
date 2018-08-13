@@ -109,6 +109,7 @@ def read_version(stream):
 def read_bool(stream):
     integer = read_int(stream, 1)
     boolean = bool(integer)
+    return boolean
 
 
 def read_timestamp(stream, n):
@@ -318,8 +319,19 @@ async def async_read_checksum(sock):
     return raw
 
 
+async def async_recv_n(sock, n):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = b""
+    while len(data) < n:
+        packet = await sock.recv(n - len(data))
+        if not packet:
+            return None
+        data += packet
+    return data
+
+
 async def async_read_payload(sock, length):
-    payload = await sock.recv(length)
+    payload = await async_recv_n(sock, length)
     return payload
 
 
@@ -341,6 +353,25 @@ def read_message(sock):
     return magic + command + length + checksum + payload
 
 
+MAGIC_BYTES = b"\xf9\xbe\xb4\xd9"
+
+
+async def recover(sock):
+    throwaway = b""
+    current = b""
+    index = 0
+    while current != MAGIC_BYTES:
+        new_byte = await sock.recv(1)
+        throwaway += new_byte
+        if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
+            current += new_byte
+            index += 1
+        else:
+            current = b""
+            index = 0
+    return throwaway
+
+
 class Packet:
     def __init__(self, command, payload):
         self.command = command
@@ -357,14 +388,14 @@ class Packet:
         checksum = read_checksum(sock)
         payload = read_payload(sock, payload_length)
 
+        if payload_length != len(payload):
+            raise RuntimeError(
+                f"Tried to read {payload_length} bytes, only received {len(payload)} bytes"
+            )
+
         calculated_checksum = calculate_checksum(payload)
         if calculated_checksum != checksum:
             raise RuntimeError(f"Checksums don't match on {command}")
-
-        if payload_length != len(payload):
-            raise RuntimeError(
-                "Tried to read {payload_length} bytes, only received {len(payload)} bytes"
-            )
 
         return cls(command, payload)
 
@@ -373,21 +404,25 @@ class Packet:
         magic = await async_read_magic(sock)
 
         if magic != NETWORK_MAGIC:
-            raise RuntimeError(f'Network magic "{magic}" is wrong')
+            print(f"Incorrect network magic")
+            throwaway = await recover(sock)
+            print(f"Throwing away {len(throwaway)} bytes:")
+            print(throwaway)
+            # raise RuntimeError(f'Network magic "{magic}" is wrong')
 
         command = await async_read_command(sock)
         payload_length = await async_read_length(sock)
         checksum = await async_read_checksum(sock)
         payload = await async_read_payload(sock, payload_length)
 
+        if payload_length != len(payload):
+            raise RuntimeError(
+                f"Tried to read {payload_length} bytes, only received {len(payload)} bytes"
+            )
+
         calculated_checksum = calculate_checksum(payload)
         if calculated_checksum != checksum:
             raise RuntimeError(f"Checksums don't match on {command}")
-
-        if payload_length != len(payload):
-            raise RuntimeError(
-                "Tried to read {payload_length} bytes, only received {len(payload)} bytes"
-            )
 
         return cls(command, payload)
 
