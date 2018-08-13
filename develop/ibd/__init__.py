@@ -93,7 +93,7 @@ def calculate_checksum(payload_bytes):
 
 
 def read_payload(sock, length):
-    payload = sock.recv(length)
+    payload = recv_n(sock, length)
     return payload
 
 
@@ -330,6 +330,17 @@ async def async_recv_n(sock, n):
     return data
 
 
+def recv_n(sock, n):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = b""
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data += packet
+    return data
+
+
 async def async_read_payload(sock, length):
     payload = await async_recv_n(sock, length)
     return payload
@@ -356,12 +367,28 @@ def read_message(sock):
 MAGIC_BYTES = b"\xf9\xbe\xb4\xd9"
 
 
-async def recover(sock):
+async def async_recover(sock):
     throwaway = b""
     current = b""
     index = 0
     while current != MAGIC_BYTES:
         new_byte = await sock.recv(1)
+        throwaway += new_byte
+        if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
+            current += new_byte
+            index += 1
+        else:
+            current = b""
+            index = 0
+    return throwaway
+
+
+def recover(sock):
+    throwaway = b""
+    current = b""
+    index = 0
+    while current != MAGIC_BYTES:
+        new_byte = sock.recv(1)
         throwaway += new_byte
         if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
             current += new_byte
@@ -381,7 +408,10 @@ class Packet:
     def from_socket(cls, sock):
         magic = read_magic(sock)
         if magic != NETWORK_MAGIC:
-            raise RuntimeError(f'Network magic "{magic}" is wrong')
+            print(f"Incorrect network magic")
+            throwaway = recover(sock)
+            print(f"Throwing away {len(throwaway)} bytes:")
+            print(throwaway)
 
         command = read_command(sock)
         payload_length = read_length(sock)
@@ -405,7 +435,7 @@ class Packet:
 
         if magic != NETWORK_MAGIC:
             print(f"Incorrect network magic")
-            throwaway = await recover(sock)
+            throwaway = await async_recover(sock)
             print(f"Throwing away {len(throwaway)} bytes:")
             print(throwaway)
             # raise RuntimeError(f'Network magic "{magic}" is wrong')
