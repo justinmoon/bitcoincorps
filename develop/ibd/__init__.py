@@ -197,6 +197,7 @@ class AddrMessage:
     command = b"addr"
 
     def __init__(self, address_list):
+        # FIXME this is kind of a weird variable name ...
         self.address_list = address_list
 
     @classmethod
