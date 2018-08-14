@@ -15,6 +15,55 @@ db = tinydb.TinyDB("db.json")
 contacted = set()
 
 
+class Task:
+    id = 0
+
+    def __init__(self, address):
+        Task.id += 1
+        self.id = self.id
+        self.address = address
+        self.start = None
+        self.stop = None
+        self.errors = []  # (error, start, stop) tuples
+        self.version_payload = None
+        self.addr_payload = None
+
+    @property
+    def tries(self):
+        return len(self.errors)
+
+    def run(self):
+        start = time.time()
+        try:
+            sock = connect(self.address)
+
+            # FIXME
+            version_payload, addr_payload = get_payloads(sock)
+            self.version_payload = list(version_payload)
+            self.addr_payload = list(addr_payload)
+
+            self.start = start
+            self.stop = time.time()
+            print("done")
+        except Exception as e:
+            stop = time.time()
+            self.errors.append((str(e), start, stop))
+            # FIXME
+            q.put(self)
+            print(e)
+        finally:
+            self.save()
+
+    def to_json(self):
+        pass
+
+    def from_json(self):
+        pass
+
+    def save(self):
+        db.insert(self.__dict__)
+
+
 def get_payloads(sock):
     start = time.time()
     global contacted
@@ -36,7 +85,7 @@ def get_payloads(sock):
                 # wait until they send us a useful list of addrs ...
                 continue
             else:
-                for address in addr_message.address_list:
+                for address in addr_message.address_list:  # FIXME
                     ip = (
                         address.ip.ipv4_mapped.compressed
                         if address.ip.ipv4_mapped
@@ -44,34 +93,15 @@ def get_payloads(sock):
                     )
                     tup = (ip, address.port)  # FIXME
                     if tup not in contacted:
-                        q.put(tup)
+                        q.put(Task(tup))
                 addr_payload = pkt.payload
         if time.time() - start > 30:
             raise Exception("taking too long")
     return version_payload, addr_payload
 
 
-# FIXME: make a `Result` class and just save that ...
-def save_version_payload(address, payload):
-    db.insert(
-        {"type": "version", "peer": address, "data": list(payload), "time": timestamp()}
-    )
-
-
 def timestamp():
     return datetime.datetime.now().isoformat()
-
-
-def save_addr_payload(address, payload):
-    db.insert(
-        {"type": "addr", "peer": address, "data": list(payload), "time": timestamp()}
-    )
-
-
-def save_error(address, error):
-    db.insert(
-        {"type": "error", "peer": address, "data": str(error), "time": timestamp()}
-    )
 
 
 def connect(address):
@@ -84,29 +114,17 @@ def connect(address):
     return sock
 
 
-def crawl():
-    global contacted
-    successes = 0
-    failures = 0
+def worker():
     while True:
-        address = q.get()
-        try:
-            sock = connect(address)
-            version_payload, addr_payload = get_payloads(sock)
-            save_version_payload(address, version_payload)
-            save_addr_payload(address, addr_payload)
-            contacted.add(address)
-            successes += 1
-        except Exception as e:
-            save_error(address, e)
-            failures += 1
-        print(f"success={successes} failure={failures} queue={q.qsize()}")
+        task = q.get()
+        print(f"connecting to {task.address}. {q.qsize()} tasks queued")
+        task.run()
 
 
 def main(addresses):
     for address in addresses:
-        q.put(address)
-    crawl()
+        q.put(Task(address))
+    worker()
 
 
 if __name__ == "__main__":
