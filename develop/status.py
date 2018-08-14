@@ -2,74 +2,64 @@ import time
 from collections import Counter
 from pprint import pprint
 
+from tabulate import tabulate
 from tinydb import Query, TinyDB
 
 db = TinyDB("db.json")
 
 
-# report = Counter([p[""] for p in payloads]).most_common()
-# failures = Counter([p["errors"] for p in payloads if p["type"] == "error"]).most_common()
-
-
-# print([e["id"] for e in tasks])
-
-# pprint(
-# [
-# {
-# "failures": len(t["errors"]),
-# "errors": list(set([e[0] for e in t["errors"]])),
-# "status": "done" if t["addr_payload"] else "pending",
-# }
-# for t in tasks
-# ]
-# )
-
-
-def task_started(task):
+def started(task):
     return task["start"] is not None
 
 
-def get_started(tasks):
-    return [task for task in tasks if task_started(task)]
+def pending(task):
+    return not completed(task)
 
 
-def task_completed(task):
+def completed(task):
     return task["addr_payload"] is not None
 
 
-def get_completed(tasks):
-    return [task for task in tasks if task_completed(task)]
-
-
-# FIXME: make a "failure" status so that we can grab the failed tasks
-
-
-def task_pending(task):
-    return not task_completed(task)
+def get_started(tasks):
+    return [task for task in tasks if started(task)]
 
 
 def get_pending(tasks):
-    return [task for task in tasks if task_pending(task)]
+    return [task for task in tasks if pending(task)]
 
 
-def task_completed_first_try(task):
-    return task_completed(task) and len(task["errors"]) == 0
+def get_completed(tasks):
+    return [task for task in tasks if completed(task)]
 
 
-def completed_first_try_percentage(tasks):
+def one_and_done(task):
+    return completed(task) and len(task["errors"]) == 0
+
+
+def one_and_done_percentage(tasks):
     started = get_started(tasks)
-    completed_first_try = [task for task in tasks if task_completed_first_try(task)]
-    return len(completed_first_try) / len(started)
+    one_and_dones = [task for task in tasks if one_and_done(task)]
+    number = len(one_and_dones) / len(started)
+    return percentage(number)
 
 
 def get_start_time(tasks):
     started = [task for task in tasks if task["start"] is not None]
+    if not started:
+        return -1  # FIXME
     return min([task["start"] for task in started])
 
 
-def completed_per_second(tasks):
-    start_time = get_start_time(tasks)
-    elapsed = time.time() - start_time
+def get_end_time(tasks):
+    started = [task for task in tasks if task["start"] is not None]
+    if not started:
+        return -1  # FIXME
+    return max([task["start"] for task in started])
+
+
+def completed_per_second(tasks, interval):
+    start_time, end_time = interval
+    elapsed = end_time - start_time
     num_completed = len(get_completed(tasks))
     return num_completed / elapsed
 
@@ -79,8 +69,12 @@ def tasks_completed(tasks):
     return len(completed)
 
 
-def get_current_run(tasks):
+def get_batch(tasks):
     return max([task["batch"] for task in tasks])
+
+
+def percentage(value):
+    return f"{value:.2%}"
 
 
 ### Warning: don't implement any of the below code if it wouldn't be useful with sqlite too ...
@@ -89,19 +83,36 @@ def get_current_run(tasks):
 ### history ###
 ###############
 
-# run-number | start-time | first-time-success % | total-contacted | time-per-success |
-
 query = Query()
 
 all_tasks = db.search(query["type"] == "task")
-batch = get_current_run(all_tasks)
+highest_batch = get_batch(all_tasks)
 
-_tasks = current_run = db.search(query["type"] == "task" and query["batch"] == batch)
+tasks_by_batch = {
+    batch_: [task for task in all_tasks if task["batch"] == batch_]
+    for batch_ in range(highest_batch)
+}
 
-print(set([task["batch"] for task in _tasks]))
+intervals_by_batch = {
+    batch: (get_start_time(tasks), get_end_time(tasks))
+    for batch, tasks in tasks_by_batch.items()
+}
 
-history_string = f"{get_current_run(_tasks)}th running | {get_start_time(_tasks)} start time | {len(get_completed(_tasks))} completed |{completed_first_try_percentage(_tasks):.0%} in one try | {completed_per_second(_tasks)} completed per second"
-print(history_string)
+
+headers = ["Batch", "Start Time", "# Completed", "One-And-Done %", "Completed / Second"]
+rows = [
+    [
+        get_batch(tasks),
+        get_start_time(tasks),
+        len(get_completed(tasks)),
+        one_and_done_percentage(tasks),
+        completed_per_second(tasks, intervals_by_batch[batch]),
+    ]
+    for batch, tasks in tasks_by_batch.items()
+    if len(tasks) > 1  # FIXME
+]
+
+print(tabulate(rows, headers))
 
 
 ###############
