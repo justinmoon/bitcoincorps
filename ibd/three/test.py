@@ -45,5 +45,17 @@ def test_version_message_round_trip():
     assert version_message == version_message_2
 
 
-def test_services_helpers():
-    pass
+def test_services():
+    services = 1 + 2 + 4 + 8 + 1024
+    keys = [
+        "NODE_NETWORK",
+        "NODE_GETUTXO",
+        "NODE_BLOOM",
+        "NODE_WITNESS",
+        "NODE_NETWORK_LIMITED",
+    ]
+    for key in keys:
+        assert lookup_services_key(services, key)
+    services = 0
+    for key in keys:
+        assert not lookup_services_key(services, key)

@@ -57,7 +57,8 @@ def read_length(sock):
 
 
 def read_checksum(sock):
-    # FIXME: protocol documentation says this should be an integer ...
+    # FIXME: protocol documentation says this should be an integer
+    # But it's just easier to keep it as bytes
     raw = sock.recv(4)
     return raw
 
@@ -84,8 +85,8 @@ def read_bool(stream):
     return boolean
 
 
-# FIXME
 def read_time(stream, version_message=True):
+    # FIXME `version_message` probably not best name for this flag
     if version_message:
         t = read_int(stream, 8)
     else:
@@ -95,9 +96,6 @@ def read_time(stream, version_message=True):
 
 def time_to_bytes(time, n):
     return int_to_bytes(time, n)
-
-
-# Variable Length
 
 
 def read_var_int(stream):
@@ -137,24 +135,22 @@ def str_to_var_str(s):
     return int_to_var_int(length) + s
 
 
-# Services
-
-
 def check_bit(number, index):
     """See if the bit at `index` in binary representation of `number` is on"""
     mask = 1 << index
     return bool(number & mask)
 
 
-def services_int_to_dict(services_int):
-    # FIXME: make this a function to look up a key in services bitfield
-    return {
-        "NODE_NETWORK": check_bit(services_int, 0),  # 1 = 2**0
-        "NODE_GETUTXO": check_bit(services_int, 1),  # 2 = 2**1
-        "NODE_BLOOM": check_bit(services_int, 2),  # 4 = 2**2
-        "NODE_WITNESS": check_bit(services_int, 3),  # 8 = 2**3
-        "NODE_NETWORK_LIMITED": check_bit(services_int, 10),  # 1024 = 2**10
+def lookup_services_key(services, key):
+    key_to_bit = {
+        "NODE_NETWORK": 0,  # 1 = 2**0
+        "NODE_GETUTXO": 1,  # 2 = 2**1
+        "NODE_BLOOM": 2,  # 4 = 2**2
+        "NODE_WITNESS": 3,  # 8 = 2**3
+        "NODE_NETWORK_LIMITED": 10,  # 1024 = 2**10
     }
+    bit = key_to_bit[key]
+    return check_bit(services, bit)
 
 
 def services_to_bytes(services):
