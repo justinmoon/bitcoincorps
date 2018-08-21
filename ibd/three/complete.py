@@ -6,8 +6,8 @@ import socket
 from tabulate import tabulate
 
 NETWORK_MAGIC = 0xD9B4BEF9
-
-IPV4_COMPAT = b"\x00" * 10 + b"\xff" * 2
+#
+IPV4_PREFIX = b"\x00" * 10 + b"\xff" * 2
 
 
 def fmt(bytestr):
@@ -176,7 +176,7 @@ def bool_to_bytes(boolean):
 
 
 def bytes_to_ip(b):
-    if bytes(b[0:12]) == IPV4_COMPAT:  # IPv4
+    if bytes(b[0:12]) == IPV4_PREFIX:  # IPv4
         return socket.inet_ntop(socket.AF_INET, b[12:16])
     else:  # IPv6
         return socket.inet_ntop(socket.AF_INET6, b)
@@ -186,7 +186,7 @@ def ip_to_bytes(ip):
     if ":" in ip:  # determine if address is IPv6
         return socket.inet_pton(socket.AF_INET6, ip)
     else:
-        return IPV4_COMPAT + socket.inet_pton(socket.AF_INET, ip)
+        return IPV4_PREFIX + socket.inet_pton(socket.AF_INET, ip)
 
 
 def read_ip(stream):
@@ -318,6 +318,26 @@ class VersionMessage:
 
     def __repr__(self):
         return f"<Message command={self.command}>"
+
+
+class VerackMessage:
+
+    command = b"verack"
+
+    @classmethod
+    def from_bytes(cls, s):
+        return cls()
+
+    def to_bytes(self):
+        return b""
+
+    def __str__(self):
+        headers = ["VerackMessage", ""]
+        rows = []
+        return tabulate(rows, headers, tablefmt="grid")
+
+    def __repr__(self):
+        return "<Verack>"
 
 
 class Packet:
