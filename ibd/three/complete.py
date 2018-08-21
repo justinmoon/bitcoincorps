@@ -7,6 +7,8 @@ from tabulate import tabulate
 
 NETWORK_MAGIC = 0xD9B4BEF9
 
+IPV4_COMPAT = b"\x00" * 10 + b"\xff" * 2
+
 
 def fmt(bytestr):
     # FIXME
@@ -165,20 +167,12 @@ def read_port(stream):
     return read_int(stream, 2, byte_order="big")
 
 
-# Addresses
-
-
 def port_to_bytes(port):
     return int_to_bytes(port, 2, byte_order="big")
 
 
 def bool_to_bytes(boolean):
     return int_to_bytes(int(boolean), 1)
-
-
-# Copied from python-bitcoinlib
-
-IPV4_COMPAT = b"\x00" * 10 + b"\xff" * 2
 
 
 def bytes_to_ip(b):

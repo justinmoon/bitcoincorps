@@ -59,3 +59,16 @@ def test_services():
     services = 0
     for key in keys:
         assert not lookup_services_key(services, key)
+
+
+def test_ip_addresses():
+    ipv4_bytes = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x01\x01\x01\x01"
+    ipv6_bytes = b"\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07"
+
+    ipv4 = bytes_to_ip(ipv4_bytes)
+    assert ipv4 == "1.1.1.1"
+    assert ipv4_bytes == ip_to_bytes(ipv4)
+
+    ipv6 = bytes_to_ip(ipv6_bytes)
+    assert ipv6 == "707:707:707:707:707:707:707:707"
+    assert ipv6_bytes == ip_to_bytes(ipv6)
