@@ -23,6 +23,8 @@ def bytes_to_int(b, byte_order="little"):
     return int.from_bytes(b, byte_order)
 
 
+# FIXME has this actually been implemented yet in the class?
+# I don't think so ...
 def int_to_bytes(i, length, byte_order="little"):
     return int.to_bytes(i, length, byte_order)
 
