@@ -133,6 +133,7 @@ def int_to_var_int(i):
 
 
 def str_to_var_str(s):
+    # FIXME this actually takes bytes as argument ... confusing API
     length = len(s)
     return int_to_var_int(length) + s
 
@@ -164,8 +165,7 @@ def read_services(stream):
 
 
 def read_port(stream):
-    return read_int(stream, 2, byte_order="big")
-
+    return read_int(stream, 2, byte_order="big") 
 
 def port_to_bytes(port):
     return int_to_bytes(port, 2, byte_order="big")
