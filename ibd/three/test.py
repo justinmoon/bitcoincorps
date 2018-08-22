@@ -72,3 +72,12 @@ def test_ip_addresses():
     ipv6 = bytes_to_ip(ipv6_bytes)
     assert ipv6 == "707:707:707:707:707:707:707:707"
     assert ipv6_bytes == ip_to_bytes(ipv6)
+
+
+def test_parse_addrs():
+    raw_addr_payload = b"\x013\xf6|[\r\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff#\xc6\x97\x15 \x8d"
+    addr = AddrMessage.from_bytes(raw_addr_payload)
+    assert len(addr.addresses) == 1
+    address = addr.addresses[0]
+    assert address.port == 8333
+    assert address.ip == "35.198.151.21"
