@@ -87,9 +87,10 @@ def read_bool(stream):
     return boolean
 
 
-def read_time(stream, version_message=True):
+def read_time(stream, version_msg=True):
     # FIXME `version_message` probably not best name for this flag
-    if version_message:
+    # FIXME: default true is also weird ...
+    if version_msg:
         t = read_int(stream, 8)
     else:
         t = read_int(stream, 4)
@@ -165,7 +166,8 @@ def read_services(stream):
 
 
 def read_port(stream):
-    return read_int(stream, 2, byte_order="big") 
+    return read_int(stream, 2, byte_order="big")
+
 
 def port_to_bytes(port):
     return int_to_bytes(port, 2, byte_order="big")
@@ -194,6 +196,27 @@ def read_ip(stream):
     return bytes_to_ip(bytes_)
 
 
+class AddrMessage:
+
+    command = b"addr"
+
+    def __init__(self, addresses):
+        # FIXME this is kind of a weird variable name ...
+        self.addresses = addresses
+
+    @classmethod
+    def from_bytes(cls, bytes_):
+        stream = io.BytesIO(bytes_)
+        count = read_var_int(stream)
+        address_list = []
+        for _ in range(count):
+            address_list.append(Address.from_stream(stream))
+        return cls(address_list)
+
+    def __repr__(self):
+        return f"<AddrMessage {len(self.address_list)}>"
+
+
 class Address:
     def __init__(self, services, ip, port, time):
         self.services = services
@@ -211,7 +234,7 @@ class Address:
         if version_msg:
             time = None
         else:
-            time = read_time(stream)
+            time = read_time(stream, version_msg=version_msg)
         services = read_services(stream)
         ip = read_ip(stream)
         port = read_port(stream)
