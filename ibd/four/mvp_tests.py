@@ -1,0 +1,47 @@
+import sqlite3
+import time
+
+import pytest
+
+from ibd.four.mvp_db import *
+
+
+@pytest.fixture(scope="function")
+def db(tmpdir):
+    # FIXME do this in-memory
+    import os
+
+    f = os.path.join(tmpdir.strpath, "test.db")
+
+    conn = sqlite3.connect(f)
+    yield conn
+    conn.close()
+
+
+def make_address(state):
+    assert state in ("queued", "started", "failed", "completed")
+    address = Address(ip="8.8.8.8", port=8333)
+    if state != "queued":
+        address.worker = "worker-77"
+        address.worker_start = time.time() - 10
+    if state == "failed":
+        address.worker_end = time.time() - 5
+        address.error = "RuntimeError"
+    if state == "completed":
+        # For now, let's just say that tasks either get both payloads or neither ... TODO
+        address.worker_end = time.time() - 5
+        address.version_payload = b"veryold"
+        address.addr_payload = b"igotnofriends"
+    return address
+
+
+def test_mvp(db):
+    create_tables(db)
+
+    address = make_address(state="queued")
+
+    save_address(db, address)
+
+    _next_address = next_address(db)
+
+    assert address.__dict__ == _next_address.__dict__
