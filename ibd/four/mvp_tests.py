@@ -46,3 +46,22 @@ def test_next_address(db):
 def test_fixture(db):
     addresses = db.execute("select * from addresses").fetchall()
     assert len(addresses) == 0
+
+
+def test_reports(db):
+    completed = 3
+    queued = 5
+    failed = 2
+    total = completed + queued + failed
+
+    for i in range(completed):
+        save_address(db, make_address("completed"))
+    for i in range(queued):
+        save_address(db, make_address("queued"))
+    for i in range(failed):
+        save_address(db, make_address("failed"))
+
+    assert completed == completed_count(db)
+    # assert queued == queued_count(db)
+    # assert failed == failed_count(db)
+    # assert total == total_count(db)

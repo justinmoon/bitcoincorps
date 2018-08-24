@@ -74,20 +74,27 @@ def next_address(db):
 #######################
 
 
-def finished_count():
+def queued_count(db):
     pass
 
 
-def total_count():
+def completed_count(db):
+    result = db.execute(
+        """
+        SELECT COUNT(*) FROM addresses
+        WHERE version_payload IS NOT NULL
+            and addr_payload IS NOT NULL
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
+
+
+def failed_count(db):
     pass
 
 
-def uncontacted_count():
-    pass
-
-
-def failed_count():
-    # error non-empty
+def total_count(db):
     pass
 
 
