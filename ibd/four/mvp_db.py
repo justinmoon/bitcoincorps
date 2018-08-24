@@ -1,3 +1,4 @@
+import socket
 import sqlite3
 
 DB_FILE = "mvp.db"
@@ -26,6 +27,7 @@ class Address:
         self.worker = worker
         self.worker_start = worker_start
         self.worker_stop = worker_stop
+        # self.socket = socket.socket()
         self.socket = None
         self.error = error
         self.version_payload = version_payload

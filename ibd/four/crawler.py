@@ -75,9 +75,10 @@ class Worker(threading.Thread):
 # Maybe call this task? Only the db has separate idea of "connection"
 # this whole class could be accomplished just as a function
 class Connection:
-    def __init__(self, address):
+    def __init__(self, address, worker):
         self.address = address
-        self.sock = ...
+        self.worker = worker
+        self.socket = None
         self.start = None
         self.stop = None
         self.error = None

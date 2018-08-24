@@ -14,6 +14,7 @@ def db(tmpdir):
     f = os.path.join(tmpdir.strpath, "test.db")
 
     conn = sqlite3.connect(f)
+    create_tables(conn)
     yield conn
     conn.close()
 
@@ -35,13 +36,13 @@ def make_address(state):
     return address
 
 
-def test_mvp(db):
-    create_tables(db)
-
+def test_next_address(db):
     address = make_address(state="queued")
-
     save_address(db, address)
+    na = next_address(db)
+    assert address.__dict__ == na.__dict__
 
-    _next_address = next_address(db)
 
-    assert address.__dict__ == _next_address.__dict__
+def test_fixture(db):
+    addresses = db.execute("select * from addresses").fetchall()
+    assert len(addresses) == 0
