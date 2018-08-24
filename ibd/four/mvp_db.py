@@ -1,8 +1,11 @@
 import queue
 import socket
 import sqlite3
+import sys
 import threading
 import time
+
+from tabulate import tabulate
 
 from ibd.three.complete import AddrMessage, Packet
 
@@ -39,7 +42,7 @@ class Address:
         self.error = error
         self.version_payload = version_payload
         self.addr_payload = addr_payload
-        self.timeout = 60  # FIXME
+        self.timeout = 180  # FIXME
 
     @property
     def tuple(self):
@@ -71,7 +74,7 @@ class Address:
             if pkt.command == b"addr":
                 addr_message = AddrMessage.from_bytes(pkt.payload)
                 # ignore "addr" messages containing just 1 address
-                if len(addr_message.addresses) > 1:
+                if addr_message.addresses[0].ip != self.ip:
                     print("GOT REAL ADDRS")
                     self.addr_payload = pkt.payload
             if time.time() - self.worker_start > self.timeout:
@@ -82,8 +85,9 @@ class Address:
     def connect(self):
         try:
             self._connect()
-        except Exception as exception:
-            self.exception = exception
+        except Exception as e:
+            print("ERROR!!!", e)
+            self.error = str(e)
         finally:
             if self.socket:
                 self.socket.close()
@@ -148,8 +152,6 @@ class Crawler:
 
     def crawl(self):
         self.spawn_workers()
-        while True:
-            time.sleep(1)
 
 
 def create_tables(db):
@@ -278,12 +280,42 @@ def crawler_start_time(db):
     return result
 
 
+def crawler_report():
+    headers = ["Queued", "Completed", "Failed"]
+    rows = [[queued_count(db), completed_count(db), failed_count(db)]]
+    return tabulate(rows, headers)
+
+
+# TODO https://twitter.com/brianokken/status/1029880505750171648
+def worker_report():
+    headers = ["Worker Name", "Peer Address", "Elapsed"]
+    rows = []
+    return tabulate(rows, headers)
+
+
+def report():
+    c = crawler_report()
+    length = len(c.split("\n")[0])
+    padding_len = round((length - 7) / 2)
+    padding = " " * padding_len
+    print(padding + "===========" + padding)
+    print(padding + "| Crawler |" + padding)
+    print(padding + "===========" + padding)
+    print()
+    print(c)
+
+    print("\n\n")
+
+
 if __name__ == "__main__":
-    recreate_tables(db)
-    addresses = [
-        ("91.221.70.137", 8333),
-        ("92.255.176.109", 8333),
-        ("94.199.178.17", 8333),
-        ("213.250.21.112", 8333),
-    ]
-    Crawler(addresses, 4).crawl()
+    if sys.argv[1] == "crawl":
+        recreate_tables(db)
+        addresses = [
+            ("91.221.70.137", 8333),
+            ("92.255.176.109", 8333),
+            ("94.199.178.17", 8333),
+            ("213.250.21.112", 8333),
+        ]
+        Crawler(addresses, 4).crawl()
+    if sys.argv[1] == "monitor":
+        report()
