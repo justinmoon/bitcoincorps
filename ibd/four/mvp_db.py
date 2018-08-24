@@ -79,7 +79,7 @@ def queued_count(db):
     result = db.execute(
         """
         SELECT COUNT(*) FROM addresses
-        WHERE worker_start IS NOT NULL
+        WHERE worker_start IS NULL
             and worker_stop IS NULL
     """
     ).fetchone()
@@ -111,7 +111,34 @@ def failed_count(db):
 
 
 def total_count(db):
+    result = db.execute(
+        """
+        SELECT COUNT(*) FROM addresses
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
+
+
+def started_count(db):
+    # start time + worker non empty, worker_stop empty
+    result = db.execute(
+        """
+        SELECT COUNT(*) FROM addresses
+        WHERE worker_start IS NOT NULL
+            AND worker_stop IS NULL
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
+
+
+def earliest_start_time():
     pass
+
+    ################
+    ### Fixtures ###
+    ################
 
 
 def currently_connected():
