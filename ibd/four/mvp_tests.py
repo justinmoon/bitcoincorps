@@ -69,3 +69,6 @@ def test_reports(db):
     assert completed == completed_count(db)
     assert failed == failed_count(db)
     assert total == total_count(db)
+
+    # FIXME: this doesn't actually check that we're getting the min ...
+    assert time.time() - 10.1 < crawler_start_time(db) < time.time() - 9.9

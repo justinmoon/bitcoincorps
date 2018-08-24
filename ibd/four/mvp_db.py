@@ -133,26 +133,12 @@ def started_count(db):
     return result
 
 
-def earliest_start_time():
-    pass
-
-    ################
-    ### Fixtures ###
-    ################
-
-
-def currently_connected():
-    # start time + worker non empty, worker_stop empty
-    pass
-
-
-def earliest_start_time():
-    pass
-
-
-################
-### Fixtures ###
-################
-
-# https://www.adfinis-sygroup.ch/blog/en/testing-with-pytest/#fixtures
-# but do it in-memory
+def crawler_start_time(db):
+    result = db.execute(
+        """
+        SELECT MIN(worker_start)
+        FROM addresses
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
