@@ -1,13 +1,14 @@
 import queue
 import socket
 import sqlite3
+import threading
 import time
 
 from ibd.three.complete import AddrMessage, Packet
 
 DB_FILE = "mvp.db"
 
-db = sqlite3.connect(DB_FILE)
+db = sqlite3.connect(DB_FILE, check_same_thread=False)
 q = queue.Queue()
 
 #######################
@@ -34,7 +35,6 @@ class Address:
         self.worker = worker
         self.worker_start = worker_start
         self.worker_stop = worker_stop
-        # self.socket = socket.socket()
         self.socket = self.make_socket()
         self.error = error
         self.version_payload = version_payload
@@ -53,11 +53,13 @@ class Address:
         return sock
 
     def _connect(self):
-        self.worker_start = start = time.time()
         self.socket.connect(self.tuple)
         self.socket.send(VERSION)
         while not self.addr_payload:
-            pkt = Packet.from_socket(self.socket)
+            try:
+                pkt = Packet.from_socket(self.socket)
+            except Exception as e:
+                continue
             print(pkt.command)
             if pkt.command == b"version":
                 self.version_payload = pkt.payload
@@ -70,8 +72,9 @@ class Address:
                 addr_message = AddrMessage.from_bytes(pkt.payload)
                 # ignore "addr" messages containing just 1 address
                 if len(addr_message.addresses) > 1:
+                    print("GOT REAL ADDRS")
                     self.addr_payload = pkt.payload
-            if time.time() - start > self.timeout:
+            if time.time() - self.worker_start > self.timeout:
                 # Let's not treat this as an error for the moment
                 # raise Exception("taking too long")
                 break
@@ -86,15 +89,67 @@ class Address:
                 self.socket.close()
 
 
-def main():
-    while True:
-        address = next_address(db)
-        save_address(db, address)
+class Worker(threading.Thread):
+    def __init__(self, name):
+        super(Worker, self).__init__()
+        self.name = name
+        self.db = sqlite3.connect(DB_FILE, check_same_thread=False)
 
-        print(f"Connecting to {address.tuple}")
-        address._connect()
+    def run(self):
+        print(f"starting {self.name}")
+        while True:
+            with self.db as c:
+                # FIXME this is magic
+                # this locks down the database to all other connectinos
+                # until this connection finishes
+                # prevents two threads from grabbing the same task
+                # hack in place of an "atomic queue"
+                # would a queue be better???
+                c.execute("begin exclusive")
 
-        save_address(db, address)
+                address = next_address(c)
+                address.worker_start = time.time()
+                address.worker = self.name
+                update_address(c, address)
+
+            print(f"{self.name} connecting to {address.tuple}")
+            address.connect()
+
+            with self.db as c:
+                update_address(c, address)
+
+            # FIXME: this is the worst chunk of code i've ever written
+            if address.addr_payload:
+                addr = AddrMessage.from_bytes(address.addr_payload)
+                print("Received new addresses: ", addr.addresses)
+                for _address in addr.addresses:
+                    with self.db as c:
+                        a = Address(_address.ip, _address.port)
+                        insert_address(c, a)
+
+
+class Crawler:
+    def __init__(self, addresses, num_workers):
+        self.feed_workers(addresses)
+        self.num_workers = num_workers
+        self.workers = []
+
+    def spawn_workers(self):
+        for i in range(self.num_workers):
+            worker_name = f"worker-{i}"
+            worker = Worker(worker_name)
+            self.workers.append(worker)
+            worker.start()
+
+    def feed_workers(self, addresses):
+        for address in addresses:
+            with db as conn:
+                insert_address(conn, Address(*address))
+
+    def crawl(self):
+        self.spawn_workers()
+        while True:
+            time.sleep(1)
 
 
 def create_tables(db):
@@ -112,25 +167,40 @@ def create_tables(db):
         )
     """
     )
+    db.execute("CREATE UNIQUE INDEX idx_address_ip_and_port ON addresses (ip, port)")
 
 
-def save_address(db, address):
+def drop_tables(db):
+    db.execute("DROP TABLE addresses")
+
+
+def recreate_tables(db):
+    drop_tables(db)
+    create_tables(db)
+
+
+def insert_address(db, address):
     db.execute(
         "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
         address.__dict__,
     )
-    db.commit()  # FIXME necessary?
+
+
+def update_address(db, address):
+    db.execute(
+        "REPLACE INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
+        address.__dict__,
+    )
 
 
 def next_address(db):
-    cursor = db.cursor()
-    cursor.execute(
+    # FIXME: this blows up when we run out of addresses
+    args = db.execute(
         """
         SELECT * FROM addresses
         WHERE worker_start IS NULL
     """
-    )
-    args = cursor.fetchone()
+    ).fetchone()
     return Address(*args)
 
 
@@ -209,13 +279,11 @@ def crawler_start_time(db):
 
 
 if __name__ == "__main__":
-    # create_tables(db)
+    recreate_tables(db)
     addresses = [
         ("91.221.70.137", 8333),
         ("92.255.176.109", 8333),
         ("94.199.178.17", 8333),
         ("213.250.21.112", 8333),
     ]
-    for address in addresses:
-        save_address(db, Address(*address))
-    main()
+    Crawler(addresses, 4).crawl()

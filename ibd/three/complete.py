@@ -363,6 +363,24 @@ class VerackMessage:
         return "<Verack>"
 
 
+def recover(sock):
+    MAGIC_BYTES = b"\xf9\xbe\xb4\xd9"
+
+    throwaway = b""
+    current = b""
+    index = 0
+    while current != MAGIC_BYTES:
+        new_byte = sock.recv(1)
+        throwaway += new_byte
+        if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
+            current += new_byte
+            index += 1
+        else:
+            current = b""
+            index = 0
+    return throwaway
+
+
 class Packet:
     def __init__(self, command, payload):
         self.command = command
@@ -372,7 +390,8 @@ class Packet:
     def from_socket(cls, sock):
         magic = read_magic(sock)
         if magic != NETWORK_MAGIC:
-            raise RuntimeError(f'Network magic "{magic}" is wrong')
+            throwaway = recover()
+            print("threw {len(throwaway)} bytes away ...")
 
         command = read_command(sock)
         payload_length = read_length(sock)
