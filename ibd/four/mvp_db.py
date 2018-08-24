@@ -44,7 +44,8 @@ def create_tables(db):
             worker_start REAL,
             worker_stop REAL,
             version_payload BLOB,
-            addr_payload BLOB
+            addr_payload BLOB,
+            error TEXT
         )
     """
     )
@@ -52,7 +53,7 @@ def create_tables(db):
 
 def save_address(db, connection):
     db.execute(
-        "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload)",
+        "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
         connection.__dict__,
     )
 
@@ -91,7 +92,14 @@ def completed_count(db):
 
 
 def failed_count(db):
-    pass
+    result = db.execute(
+        """
+        SELECT COUNT(*) FROM addresses
+        WHERE error IS NOT NULL
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
 
 
 def total_count(db):
