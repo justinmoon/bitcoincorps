@@ -62,6 +62,6 @@ def test_reports(db):
         save_address(db, make_address("failed"))
 
     assert completed == completed_count(db)
-    # assert queued == queued_count(db)
+    assert queued == queued_count(db)
     assert failed == failed_count(db)
     # assert total == total_count(db)

@@ -76,7 +76,15 @@ def next_address(db):
 
 
 def queued_count(db):
-    pass
+    result = db.execute(
+        """
+        SELECT COUNT(*) FROM addresses
+        WHERE worker_start IS NOT NULL
+            and worker_stop IS NULL
+    """
+    ).fetchone()
+    result = result[0]  # FIXME
+    return result
 
 
 def completed_count(db):
