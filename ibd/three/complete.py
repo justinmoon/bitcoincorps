@@ -393,7 +393,7 @@ class Packet:
         magic = read_magic(sock)
         if magic != NETWORK_MAGIC:
             throwaway = recover(sock)
-            print("threw {len(throwaway)} bytes away ...")
+            print(f"threw {len(throwaway)} bytes away ...")
             # raise RuntimeError("magic")
 
         command = read_command(sock)

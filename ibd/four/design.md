@@ -81,3 +81,15 @@ Create a new sqlite db for every run unless specifically directed to resuse by c
 the first version of this should use a thread-safe queue to keep track of addresses
 
 second version moves everything to sqlite, once it's introduced ...
+
+# Round Up
+
+Problems
+* if we get the same address from 2 different peers, we have a problem
+* cpu utilization spirals out of control
+* workers die if the queue is ever empty ... this is a very good argument for using an actual queue
+* \_connect is very ugly
+* no worker report
+
+"Network is Unreachable" seems to happen more frequently when many threads all try to make connections concurrently ...
+

@@ -1,4 +1,5 @@
 import queue
+import random
 import socket
 import sqlite3
 import sys
@@ -41,7 +42,7 @@ class Address:
         self.error = error
         self.version_payload = version_payload
         self.addr_payload = addr_payload
-        self.timeout = 10  # FIXME
+        self.timeout = 60 * 3
 
     @property
     def tuple(self):
@@ -51,10 +52,10 @@ class Address:
         ip_version = socket.AF_INET6 if ":" in self.ip else socket.AF_INET
         sock = self.socket = socket.socket(ip_version)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.settimeout(5)
         return sock
 
     def _connect(self):
+        time.sleep(random.random() * 3)
         self.socket.connect(self.tuple)
         self.socket.send(VERSION)
         while not self.addr_payload:
@@ -106,6 +107,7 @@ class Worker(threading.Thread):
 
     def run(self):
         print(f"starting {self.name}")
+        time.sleep(random.random() * 10)  # space things out a bit
         while True:
             address = self.work_queue.get()
 
@@ -152,15 +154,13 @@ class Crawler:
         self.spawn_workers()
         while True:
             # Refill the queue if it is empty
-            if self.work_queue.qsize() < 10:
+            if self.work_queue.qsize() < 100:
                 for address in next_addresses(db):
-                    print("adding work")
                     self.work_queue.put(address)
 
             # Persist the updates to SQLite
             while self.update_queue.qsize():
                 address = self.update_queue.get()
-                print("handling update")
                 self.handle_update(address)
 
             count = 0
@@ -209,14 +209,15 @@ def recreate_tables():
 def insert_addresses(addresses):
     # Attempt to insert the address
     # If it already exists in the database, disregard
-    with db:
-        try:
-            db.executemany(
-                "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-                [address.__dict__ for address in addresses],
-            )
-        except sqlite3.IntegrityError:
-            return
+    for address in addresses:
+        with db:
+            try:
+                db.execute(
+                    "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
+                    address,
+                )
+            except sqlite3.IntegrityError:
+                return
 
 
 def update_address(address):
@@ -233,7 +234,7 @@ def next_addresses(db):
         """
         SELECT * FROM addresses
         WHERE worker_start IS NULL
-        LIMIT 10
+        LIMIT 100
     """
     ).fetchall()
     return [Address(*args) for args in args_list]
@@ -249,7 +250,6 @@ def queued_count(db):
         """
         SELECT COUNT(*) FROM addresses
         WHERE worker_start IS NULL
-            and worker_stop IS NULL
     """
     ).fetchone()
     result = result[0]  # FIXME
@@ -326,7 +326,7 @@ def worker_statuses(db):
         worker
     """
     result = db.execute(q).fetchall()
-    return sorted(result, key=lambda r: int(r[0].split("-")[1]))
+    return sorted(result, key=lambda r: -int(r[0].split("-")[1]))
     # result = db.execute(q).fetchall()
     # addresses = [Address(*args) for args in result]
     # return sorted(addresses, key=lambda address: int(address.worker.split("-")[1]))
@@ -372,6 +372,6 @@ if __name__ == "__main__":
         # ]
         # insert_addresses(addresses)
         addresses = []
-        Crawler(100).crawl()
+        Crawler(500).crawl()
     if sys.argv[1] == "monitor":
         report()
