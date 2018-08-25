@@ -371,7 +371,7 @@ def recover(sock):
     index = 0
     while current != MAGIC_BYTES:
         new_byte = sock.recv(1)
-        if not new_byte:
+        if new_byte == b"":
             raise EOFError("Failed to recover from bad magic bytes")
         throwaway += new_byte
         if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
