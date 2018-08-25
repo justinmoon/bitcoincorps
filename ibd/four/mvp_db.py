@@ -42,7 +42,7 @@ class Address:
         self.error = error
         self.version_payload = version_payload
         self.addr_payload = addr_payload
-        self.timeout = 180  # FIXME
+        self.timeout = 10  # FIXME
 
     @property
     def tuple(self):
@@ -52,7 +52,7 @@ class Address:
         ip_version = socket.AF_INET6 if ":" in self.ip else socket.AF_INET
         sock = self.socket = socket.socket(ip_version)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # sock.settimeout(???)
+        sock.settimeout(5)
         return sock
 
     def _connect(self):
@@ -80,7 +80,8 @@ class Address:
             if time.time() - self.worker_start > self.timeout:
                 # Let's not treat this as an error for the moment
                 # raise Exception("taking too long")
-                break
+                self.error = "taking too long"
+                return
 
     def connect(self):
         try:
@@ -94,42 +95,28 @@ class Address:
 
 
 class Worker(threading.Thread):
-    def __init__(self, name):
+    def __init__(self, name, work_queue, update_queue):
         super(Worker, self).__init__()
         self.name = name
         self.db = sqlite3.connect(DB_FILE, check_same_thread=False)
+        self.work_queue = work_queue
+        self.update_queue = update_queue
 
     def run(self):
         print(f"starting {self.name}")
         while True:
-            with self.db as c:
-                # FIXME this is magic
-                # this locks down the database to all other connectinos
-                # until this connection finishes
-                # prevents two threads from grabbing the same task
-                # hack in place of an "atomic queue"
-                # would a queue be better???
-                c.execute("begin exclusive")
+            address = self.work_queue.get()
 
-                address = next_address(c)
-                address.worker_start = time.time()
-                address.worker = self.name
-                update_address(c, address)
+            # Tell the crawler we've claimed the task
+            address.worker_start = time.time()
+            address.worker = self.name
+            self.update_queue.put(address)
 
             print(f"{self.name} connecting to {address.tuple}")
             address.connect()
 
-            with self.db as c:
-                update_address(c, address)
-
-            # FIXME: this is the worst chunk of code i've ever written
-            if address.addr_payload:
-                addr = AddrMessage.from_bytes(address.addr_payload)
-                print("Received new addresses: ", addr.addresses)
-                for _address in addr.addresses:
-                    with self.db as c:
-                        a = Address(_address.ip, _address.port)
-                        insert_address(c, a)
+            # Tell the crawler about the result of the connection attempt
+            self.update_queue.put(address)
 
 
 class Crawler:
@@ -137,11 +124,13 @@ class Crawler:
         self.feed_workers(addresses)
         self.num_workers = num_workers
         self.workers = []
+        self.work_queue = queue.Queue()
+        self.update_queue = queue.Queue()
 
     def spawn_workers(self):
         for i in range(self.num_workers):
             worker_name = f"worker-{i}"
-            worker = Worker(worker_name)
+            worker = Worker(worker_name, self.work_queue, self.update_queue)
             self.workers.append(worker)
             worker.start()
 
@@ -150,8 +139,44 @@ class Crawler:
             with db as conn:
                 insert_address(conn, Address(*address))
 
+    def handle_update(self, address):
+        with db as c:
+            update_address(c, address)
+
+        # FIXME: this is the worst chunk of code i've ever written
+        # The problems is that we're working with 2 separate notions of "address"
+        if address.addr_payload:
+            addr_message = AddrMessage.from_bytes(address.addr_payload)
+            print("Received new addresses: ", addr_message.addresses)
+            for addr_message_address in addr_message.addresses:
+                with db as c:
+                    a = Address(addr_message_address.ip, addr_message_address.port)
+                    insert_address(c, a)
+
     def crawl(self):
         self.spawn_workers()
+        while True:
+            # Refill the queue if it is empty
+            if self.work_queue.qsize() < 10:
+                for address in next_addresses(db):
+                    print("adding work")
+                    self.work_queue.put(address)
+
+            # Persist the updates to SQLite
+            while self.update_queue.qsize():
+                address = self.update_queue.get()
+                print("handling update")
+                self.handle_update(address)
+
+            count = 0
+            for thread in self.workers:
+                if thread.is_alive():
+                    count += 1
+            print(f"Living threads: {count}")
+            print(f"Work queue: {self.work_queue.qsize()}")
+            print(f"Update queue: {self.update_queue.qsize()}")
+            # Don't hammer the CPU
+            time.sleep(2)
 
 
 def create_tables(db):
@@ -182,10 +207,15 @@ def recreate_tables(db):
 
 
 def insert_address(db, address):
-    db.execute(
-        "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-        address.__dict__,
-    )
+    # Attempt to insert the address
+    # If it already exists in the database, disregard
+    try:
+        db.execute(
+            "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
+            address.__dict__,
+        )
+    except sqlite3.IntegrityError:
+        return
 
 
 def update_address(db, address):
@@ -195,15 +225,16 @@ def update_address(db, address):
     )
 
 
-def next_address(db):
+def next_addresses(db):
     # FIXME: this blows up when we run out of addresses
-    args = db.execute(
+    args_list = db.execute(
         """
         SELECT * FROM addresses
         WHERE worker_start IS NULL
+        LIMIT 10
     """
-    ).fetchone()
-    return Address(*args)
+    ).fetchall()
+    return [Address(*args) for args in args_list]
 
 
 #######################
@@ -280,6 +311,26 @@ def crawler_start_time(db):
     return result
 
 
+def worker_statuses(db):
+    # TODO: also query count(*) and display that ...
+    q = """
+    SELECT 
+        worker, ip, strftime('%s','now') - MAX(worker_start)
+    FROM 
+        addresses
+    WHERE 
+        worker IS NOT NULL 
+        AND worker_stop IS NULL
+    GROUP BY 
+        worker
+    """
+    result = db.execute(q).fetchall()
+    return sorted(result, key=lambda r: int(r[0].split("-")[1]))
+    # result = db.execute(q).fetchall()
+    # addresses = [Address(*args) for args in result]
+    # return sorted(addresses, key=lambda address: int(address.worker.split("-")[1]))
+
+
 def crawler_report():
     headers = ["Queued", "Completed", "Failed"]
     rows = [[queued_count(db), completed_count(db), failed_count(db)]]
@@ -289,7 +340,7 @@ def crawler_report():
 # TODO https://twitter.com/brianokken/status/1029880505750171648
 def worker_report():
     headers = ["Worker Name", "Peer Address", "Elapsed"]
-    rows = []
+    rows = worker_statuses(db)
     return tabulate(rows, headers)
 
 
@@ -306,16 +357,19 @@ def report():
 
     print("\n\n")
 
+    print(worker_report())
+
 
 if __name__ == "__main__":
     if sys.argv[1] == "crawl":
-        recreate_tables(db)
-        addresses = [
-            ("91.221.70.137", 8333),
-            ("92.255.176.109", 8333),
-            ("94.199.178.17", 8333),
-            ("213.250.21.112", 8333),
-        ]
+        # recreate_tables(db)
+        # addresses = [
+        # ("91.221.70.137", 8333),
+        # ("92.255.176.109", 8333),
+        # ("94.199.178.17", 8333),
+        # ("213.250.21.112", 8333),
+        # ]
+        addresses = []
         Crawler(addresses, 4).crawl()
     if sys.argv[1] == "monitor":
         report()
