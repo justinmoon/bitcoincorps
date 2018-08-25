@@ -118,8 +118,7 @@ class Worker(threading.Thread):
 
 
 class Crawler:
-    def __init__(self, addresses, num_workers):
-        self.feed_workers(addresses)
+    def __init__(self, num_workers):
         self.num_workers = num_workers
         self.workers = []
         self.work_queue = queue.Queue()
@@ -132,10 +131,6 @@ class Crawler:
             self.workers.append(worker)
             worker.start()
 
-    def feed_workers(self, addresses):
-        for address in addresses:
-            insert_address(Address(*address))
-
     def handle_update(self, address):
         update_address(address)
 
@@ -144,9 +139,11 @@ class Crawler:
         if address.addr_payload:
             addr_message = AddrMessage.from_bytes(address.addr_payload)
             print("Received new addresses: ", addr_message.addresses)
-            for addr_message_address in addr_message.addresses:
-                a = Address(addr_message_address.ip, addr_message_address.port)
-                insert_address(a)
+            foo = [
+                Address(addr_message_address.ip, addr_message_address.port)
+                for addr_message_address in addr_message.addresses
+            ]
+            insert_addresses(foo)
 
     def crawl(self):
         self.spawn_workers()
@@ -206,14 +203,14 @@ def recreate_tables():
         create_tables(db)
 
 
-def insert_address(address):
+def insert_addresses(addresses):
     # Attempt to insert the address
     # If it already exists in the database, disregard
     with db:
         try:
-            db.execute(
+            db.executemany(
                 "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-                address.__dict__,
+                [address.__dict__ for address in addresses],
             )
         except sqlite3.IntegrityError:
             return
@@ -366,12 +363,13 @@ if __name__ == "__main__":
     if sys.argv[1] == "crawl":
         # recreate_tables(db)
         # addresses = [
-        # ("91.221.70.137", 8333),
-        # ("92.255.176.109", 8333),
-        # ("94.199.178.17", 8333),
-        # ("213.250.21.112", 8333),
+        # Address("91.221.70.137", 8333),
+        # Address("92.255.176.109", 8333),
+        # Address("94.199.178.17", 8333),
+        # Address("213.250.21.112", 8333),
         # ]
+        # insert_addresses(addresses)
         addresses = []
-        Crawler(addresses, 4).crawl()
+        Crawler(4).crawl()
     if sys.argv[1] == "monitor":
         report()
