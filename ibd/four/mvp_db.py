@@ -11,8 +11,7 @@ from ibd.three.complete import AddrMessage, Packet
 
 DB_FILE = "mvp.db"
 
-db = sqlite3.connect(DB_FILE, check_same_thread=False)
-q = queue.Queue()
+db = sqlite3.connect(DB_FILE)
 
 #######################
 ### For the crawler ###
@@ -98,7 +97,6 @@ class Worker(threading.Thread):
     def __init__(self, name, work_queue, update_queue):
         super(Worker, self).__init__()
         self.name = name
-        self.db = sqlite3.connect(DB_FILE, check_same_thread=False)
         self.work_queue = work_queue
         self.update_queue = update_queue
 
@@ -136,12 +134,10 @@ class Crawler:
 
     def feed_workers(self, addresses):
         for address in addresses:
-            with db as conn:
-                insert_address(conn, Address(*address))
+            insert_address(Address(*address))
 
     def handle_update(self, address):
-        with db as c:
-            update_address(c, address)
+        update_address(address)
 
         # FIXME: this is the worst chunk of code i've ever written
         # The problems is that we're working with 2 separate notions of "address"
@@ -149,9 +145,8 @@ class Crawler:
             addr_message = AddrMessage.from_bytes(address.addr_payload)
             print("Received new addresses: ", addr_message.addresses)
             for addr_message_address in addr_message.addresses:
-                with db as c:
-                    a = Address(addr_message_address.ip, addr_message_address.port)
-                    insert_address(c, a)
+                a = Address(addr_message_address.ip, addr_message_address.port)
+                insert_address(a)
 
     def crawl(self):
         self.spawn_workers()
@@ -179,50 +174,57 @@ class Crawler:
             time.sleep(2)
 
 
-def create_tables(db):
-    db.execute(
+def create_tables():
+    with db:
+        db.execute(
+            """
+            CREATE TABLE addresses (
+                ip TEXT,
+                port INTEGER,
+                worker TEXT,
+                worker_start REAL,
+                worker_stop REAL,
+                version_payload BLOB,
+                addr_payload BLOB,
+                error TEXT
+            )
         """
-        CREATE TABLE addresses (
-            ip TEXT,
-            port INTEGER,
-            worker TEXT,
-            worker_start REAL,
-            worker_stop REAL,
-            version_payload BLOB,
-            addr_payload BLOB,
-            error TEXT
         )
-    """
-    )
-    db.execute("CREATE UNIQUE INDEX idx_address_ip_and_port ON addresses (ip, port)")
+        db.execute(
+            "CREATE UNIQUE INDEX idx_address_ip_and_port ON addresses (ip, port)"
+        )
 
 
-def drop_tables(db):
-    db.execute("DROP TABLE addresses")
+def drop_tables():
+    with db:
+        db.execute("DROP TABLE addresses")
 
 
-def recreate_tables(db):
-    drop_tables(db)
-    create_tables(db)
+def recreate_tables():
+    with db:
+        drop_tables(db)
+        create_tables(db)
 
 
-def insert_address(db, address):
+def insert_address(address):
     # Attempt to insert the address
     # If it already exists in the database, disregard
-    try:
+    with db:
+        try:
+            db.execute(
+                "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
+                address.__dict__,
+            )
+        except sqlite3.IntegrityError:
+            return
+
+
+def update_address(address):
+    with db:
         db.execute(
-            "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
+            "REPLACE INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
             address.__dict__,
         )
-    except sqlite3.IntegrityError:
-        return
-
-
-def update_address(db, address):
-    db.execute(
-        "REPLACE INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-        address.__dict__,
-    )
 
 
 def next_addresses(db):
