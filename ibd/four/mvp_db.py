@@ -60,7 +60,11 @@ class Address:
         while not self.addr_payload:
             try:
                 pkt = Packet.from_socket(self.socket)
+            except EOFError as e:
+                # For now we ditch this connection
+                raise e
             except Exception as e:
+                print("Packet.from_socket() error:", e)
                 continue
             print(pkt.command)
             if pkt.command == b"version":
@@ -110,7 +114,6 @@ class Worker(threading.Thread):
             address.worker = self.name
             self.update_queue.put(address)
 
-            print(f"{self.name} connecting to {address.tuple}")
             address.connect()
 
             # Tell the crawler about the result of the connection attempt
@@ -258,7 +261,6 @@ def completed_count(db):
         """
         SELECT COUNT(*) FROM addresses
         WHERE version_payload IS NOT NULL
-            and addr_payload IS NOT NULL
     """
     ).fetchone()
     result = result[0]  # FIXME
@@ -370,6 +372,6 @@ if __name__ == "__main__":
         # ]
         # insert_addresses(addresses)
         addresses = []
-        Crawler(4).crawl()
+        Crawler(100).crawl()
     if sys.argv[1] == "monitor":
         report()

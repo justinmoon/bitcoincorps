@@ -371,6 +371,8 @@ def recover(sock):
     index = 0
     while current != MAGIC_BYTES:
         new_byte = sock.recv(1)
+        if not new_byte:
+            raise EOFError("Failed to recover from bad magic bytes")
         throwaway += new_byte
         if MAGIC_BYTES[index] == new_byte[0]:  # FIXME
             current += new_byte
@@ -390,8 +392,9 @@ class Packet:
     def from_socket(cls, sock):
         magic = read_magic(sock)
         if magic != NETWORK_MAGIC:
-            throwaway = recover()
+            throwaway = recover(sock)
             print("threw {len(throwaway)} bytes away ...")
+            # raise RuntimeError("magic")
 
         command = read_command(sock)
         payload_length = read_length(sock)
