@@ -53,28 +53,29 @@ Connection Relationships
     * More `Address` rows
 * Worker
 
-non-empty Connection.start and empty Connectin.stop can be used to link workers to active connectinos
+Version Message
+* Same as currently, but keep the raw bytes
+
+Addr Message
+* Same as currently, but keep the raw bytes
+
+
 
 ### DB api
 
-next_address()
+save_connection()
+-> Adds entry to "connections" table
+-> Adds entry to "version_messages" table
+-> Adds entry to "addr_messages" table
+-> (?) Adds entry to the "errors" table
 
-save_addresses(addresses)
-save_connection(c)
-save_version_payload(vp)
-save_addrs_payload(ap)
-
-num_tasks_attempted()
-num_tasks_failed()
-num_tasks_succeeded()
-earliest_start_time()
-
-worker_report()
-    * 3 way join between worker / connection / address to get worker name / start time / ip
+Would you ever update a connection, version_message, or addr_message entry in the database?
 
 ### Ideas
 
 Create a new sqlite db for every run unless specifically directed to resuse by cli args
+
+Maybe connection.send would just take messages and wrap them in `Packet`?
 
 ### Class Ideas
 

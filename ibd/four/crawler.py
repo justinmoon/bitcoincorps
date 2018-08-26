@@ -10,7 +10,7 @@ from tabulate import tabulate
 
 from ibd.three.complete import Address, AddrMessage, Packet
 
-DB_FILE = "mvp.db"
+DB_FILE = "crawler.db"
 
 db = sqlite3.connect(DB_FILE)
 
@@ -191,24 +191,53 @@ class Crawler:
             time.sleep(2)
 
 
-def create_tables():
+def create_tables(db=db):
     with db:
         db.execute(
             """
             CREATE TABLE addresses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ip TEXT,
-                port INTEGER,
-                worker TEXT,
-                worker_start REAL,
-                worker_stop REAL,
-                version_payload BLOB,
-                addr_payload BLOB,
-                error TEXT
+                port INTEGER
             )
         """
         )
         db.execute(
             "CREATE UNIQUE INDEX idx_address_ip_and_port ON addresses (ip, port)"
+        )
+        db.execute(
+            """
+            CREATE TABLE connections (
+                id INTEGER PRIMARY KEY,
+                worker TEXT,
+                start REAL,
+                stop REAL,
+                error TEXT,
+                address_id INTEGER NOT NULL,
+                    FOREIGN KEY (address_id) REFERENCES addresses(id)
+            )
+        """
+        )
+        db.execute(
+            # FIXME add more columns
+            """
+            CREATE TABLE addr_messages (
+                id INTEGER PRIMARY KEY,
+                services INTEGER,
+                ip TEXT,
+                port INTEGER
+            )
+        """
+        )
+        db.execute(
+            # FIXME add more columns
+            """
+            CREATE TABLE version_message (
+                id INTEGER PRIMARY KEY,
+                version INTEGER,
+                user_agent TEXT
+            )
+        """
         )
 
 
@@ -223,15 +252,15 @@ def recreate_tables():
         create_tables(db)
 
 
-def insert_addresses(addresses):
+def insert_addresses(addresses, db=db):
     # Attempt to insert the address
     # If it already exists in the database, disregard
     for address in addresses:
         with db:
             try:
                 db.execute(
-                    "INSERT INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-                    address,
+                    "INSERT INTO addresses(ip, port) VALUES (:ip, :port)",
+                    address.__dict__,
                 )
             except sqlite3.IntegrityError:
                 return
