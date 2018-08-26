@@ -8,7 +8,7 @@ import time
 
 from tabulate import tabulate
 
-from ibd.three.complete import AddrMessage, Packet
+from ibd.three.complete import Address, AddrMessage, Packet
 
 DB_FILE = "mvp.db"
 
@@ -21,35 +21,37 @@ db = sqlite3.connect(DB_FILE)
 VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9e\x7f\x11\x01\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x93AU[\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00rV\xc5C\x9b:\xea\x89\x14/some-cool-software/\x01\x00\x00\x00\x01'
 
 
-class Address:
-    def __init__(
-        self,
-        ip,
-        port,
-        worker=None,
-        worker_start=None,
-        worker_stop=None,
-        error=None,
-        version_payload=None,
-        addr_payload=None,
-    ):
-        self.ip = ip
-        self.port = port
-        self.worker = worker
-        self.worker_start = worker_start
-        self.worker_stop = worker_stop
-        self.socket = self.make_socket()
-        self.error = error
-        self.version_payload = version_payload
-        self.addr_payload = addr_payload
-        self.timeout = 60 * 3
+def save_version_message(version_message):
+    print("SAVING", version_message)
 
-    @property
-    def tuple(self):
-        return (self.ip, self.port)
+
+def save_addr_message(addr_message):
+    print("SAVING", addr_message)
+
+
+def save_connection(connection):
+    print("SAVING", connection)
+
+
+class Connection:
+    def __init__(self, address, worker):
+        self.address = address
+        self.worker = worker
+        self.socket = self.make_socket()
+        self.start = None
+        self.stop = None
+        self.error = None
+        # Relationships
+        self.version_message = None
+        self.addr_message = None
+
+    def start_handshake(self):
+        time.sleep(random.random() * 3)
+        self.socket.connect(self.address.tuple())
+        self.socket.send(VERSION)  # FIXME
 
     def make_socket(self):
-        ip_version = socket.AF_INET6 if ":" in self.ip else socket.AF_INET
+        ip_version = socket.AF_INET6 if ":" in self.address.ip else socket.AF_INET
         sock = self.socket = socket.socket(ip_version)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return sock
@@ -91,11 +93,12 @@ class Address:
             # raise Exception("taking too long")
             raise RuntimeError("Taking too long")
 
+    def complete(self):
+        return self.version_message is not None and self.addr_message is not None
+
     def _connect(self):
-        time.sleep(random.random() * 3)
-        self.socket.connect(self.tuple)
-        self.socket.send(VERSION)
-        while not self.addr_payload:
+        self.start_handshake()
+        while not self.complete():
             self.check_for_timeout()
             try:
                 packet = Packet.from_socket(self.socket)
@@ -119,44 +122,42 @@ class Address:
 
 
 class Worker(threading.Thread):
-    def __init__(self, name, work_queue, update_queue):
+    def __init__(self, name, address_queue, connection_queue):
         super(Worker, self).__init__()
         self.name = name
-        self.work_queue = work_queue
-        self.update_queue = update_queue
+        self.address_queue = address_queue
+        self.connection_queue = connection_queue
 
     def run(self):
         print(f"starting {self.name}")
         time.sleep(random.random() * 10)  # space things out a bit
         while True:
-            address = self.work_queue.get()
+            address = self.address_queue.get()
+            connection = Connection(
+                address, self.name
+            )  # FIXME just self for more flexability ...
 
-            # Tell the crawler we've claimed the task
-            address.worker_start = time.time()
-            address.worker = self.name
-            self.update_queue.put(address)
-
-            address.connect()
+            connection.connect()
 
             # Tell the crawler about the result of the connection attempt
-            self.update_queue.put(address)
+            self.connection_queue.put(connection)
 
 
 class Crawler:
     def __init__(self, num_workers):
         self.num_workers = num_workers
         self.workers = []
-        self.work_queue = queue.Queue()
-        self.update_queue = queue.Queue()
+        self.address_queue = queue.Queue()
+        self.connection_queue = queue.Queue()
 
     def spawn_workers(self):
         for i in range(self.num_workers):
             worker_name = f"worker-{i}"
-            worker = Worker(worker_name, self.work_queue, self.update_queue)
+            worker = Worker(worker_name, self.address_queue, self.connection_queue)
             self.workers.append(worker)
             worker.start()
 
-    def handle_update(self, address):
+    def FIXME(self, address):
         update_address(address)
 
         # FIXME: this is the worst chunk of code i've ever written
@@ -164,33 +165,29 @@ class Crawler:
         if address.addr_payload:
             addr_message = AddrMessage.from_bytes(address.addr_payload)
             print("Received new addresses: ", addr_message.addresses)
-            foo = [
-                Address(addr_message_address.ip, addr_message_address.port)
-                for addr_message_address in addr_message.addresses
-            ]
-            insert_addresses(foo)
+            insert_addresses(addr_message.addresses)
+
+    def save_connection_outcome(self, connection):
+        save_connection(connection)
+        save_version_message(connection.version_message)
+        save_addr_message(connection.addr_message)
+        # Save connection.addr_message.addresses as well ...
 
     def crawl(self):
         self.spawn_workers()
         while True:
             # Refill the queue if it is empty
-            if self.work_queue.qsize() < 100:
-                for address in next_addresses(db):
-                    self.work_queue.put(address)
+            if self.address_queue.qsize() < 100:
+                for address in next_addresses():
+                    self.address_queue.put(address)
 
             # Persist the updates to SQLite
-            while self.update_queue.qsize():
-                address = self.update_queue.get()
-                self.handle_update(address)
+            while self.connection_queue.qsize():
+                connection = self.connection_queue.get()
+                self.save_connection_outcome(connection)
 
-            count = 0
-            for thread in self.workers:
-                if thread.is_alive():
-                    count += 1
-            print(f"Living threads: {count}")
-            print(f"Work queue: {self.work_queue.qsize()}")
-            print(f"Update queue: {self.update_queue.qsize()}")
-            # Don't hammer the CPU
+            print(f"Address queue: {self.address_queue.qsize()}")
+            print(f"Connection queue: {self.connection_queue.qsize()}")
             time.sleep(2)
 
 
@@ -248,7 +245,7 @@ def update_address(address):
         )
 
 
-def next_addresses(db):
+def next_addresses():
     # FIXME: this blows up when we run out of addresses
     args_list = db.execute(
         """
@@ -257,7 +254,7 @@ def next_addresses(db):
         LIMIT 100
     """
     ).fetchall()
-    return [Address(*args) for args in args_list]
+    return [Address(None, args[0], args[1], None) for args in args_list]
 
 
 #######################
