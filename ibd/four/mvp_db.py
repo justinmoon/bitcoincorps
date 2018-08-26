@@ -54,38 +54,58 @@ class Address:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return sock
 
+    def handle_version(self, packet):
+        self.version_payload = packet.payload
+        my_verack_packet = Packet(
+            command=b"verack", payload=b""
+        )  # FIXME: payload should default to b""
+        self.socket.send(my_verack_packet.to_bytes())
+
+    def handle_verack(self, packet):
+        my_getaddr_packet = Packet(command=b"getaddr", payload=b"")
+        self.socket.send(my_getaddr_packet.to_bytes())
+
+    def handle_addr(self, packet):
+        addr_message = AddrMessage.from_bytes(packet.payload)
+        # ignore "addr" messages containing just 1 address
+        if addr_message.addresses[0].ip != self.ip:
+            print("GOT REAL ADDRS")
+            self.addr_payload = packet.payload
+
+    def handle_packet(self, packet):
+        command_to_handler = {
+            b"version": self.handle_version,
+            b"verack": self.handle_verack,
+            b"addr": self.handle_addr,
+        }
+        if packet.command in command_to_handler:
+            handler = command_to_handler[packet.command]
+            handler(packet)
+
+    def check_for_timeout(self):
+        now = time.time()
+        duration = now - self.worker_start
+        needs_timout = duration > self.timeout
+        if needs_timout:
+            # Let's not treat this as an error for the moment
+            # raise Exception("taking too long")
+            raise RuntimeError("Taking too long")
+
     def _connect(self):
         time.sleep(random.random() * 3)
         self.socket.connect(self.tuple)
         self.socket.send(VERSION)
         while not self.addr_payload:
+            self.check_for_timeout()
             try:
-                pkt = Packet.from_socket(self.socket)
+                packet = Packet.from_socket(self.socket)
             except EOFError as e:
                 # For now we ditch this connection
                 raise e
             except Exception as e:
                 print("Packet.from_socket() error:", e)
                 continue
-            print(pkt.command)
-            if pkt.command == b"version":
-                self.version_payload = pkt.payload
-                my_verack_pkt = Packet(command=b"verack", payload=b"")
-                self.socket.send(my_verack_pkt.to_bytes())
-            if pkt.command == b"verack":
-                getaddr = Packet(command=b"getaddr", payload=b"")
-                self.socket.send(getaddr.to_bytes())
-            if pkt.command == b"addr":
-                addr_message = AddrMessage.from_bytes(pkt.payload)
-                # ignore "addr" messages containing just 1 address
-                if addr_message.addresses[0].ip != self.ip:
-                    print("GOT REAL ADDRS")
-                    self.addr_payload = pkt.payload
-            if time.time() - self.worker_start > self.timeout:
-                # Let's not treat this as an error for the moment
-                # raise Exception("taking too long")
-                self.error = "taking too long"
-                return
+            self.handle_packet(packet)
 
     def connect(self):
         try:
