@@ -218,11 +218,12 @@ class AddrMessage:
 
 
 class Address:
-    def __init__(self, services, ip, port, time):
+    def __init__(self, services, ip, port, time, id_=None):
         self.services = services
         self.ip = ip
         self.port = port
         self.time = time
+        self.id = id_
 
     @classmethod
     def from_bytes(cls, bytes_, version_msg=False):
@@ -250,6 +251,9 @@ class Address:
         msg += ip_to_bytes(self.ip)
         msg += port_to_bytes(self.port)
         return msg
+
+    def tuple(self):
+        return (self.ip, self.port)
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__

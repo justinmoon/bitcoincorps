@@ -8,29 +8,13 @@ import time
 
 from tabulate import tabulate
 
+from ibd.four.monitor import report
 from ibd.three.complete import Address, AddrMessage, Packet
 
 DB_FILE = "crawler.db"
-
 db = sqlite3.connect(DB_FILE)
 
-#######################
-### For the crawler ###
-#######################
-
 VERSION = b'\xf9\xbe\xb4\xd9version\x00\x00\x00\x00\x00j\x00\x00\x00\x9b"\x8b\x9e\x7f\x11\x01\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x93AU[\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0f\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00rV\xc5C\x9b:\xea\x89\x14/some-cool-software/\x01\x00\x00\x00\x01'
-
-
-def save_version_message(version_message):
-    print("SAVING", version_message)
-
-
-def save_addr_message(addr_message):
-    print("SAVING", addr_message)
-
-
-def save_connection(connection):
-    print("SAVING", connection)
 
 
 class Connection:
@@ -41,6 +25,7 @@ class Connection:
         self.start = None
         self.stop = None
         self.error = None
+        self.timeout = 180
         # Relationships
         self.version_message = None
         self.addr_message = None
@@ -54,13 +39,15 @@ class Connection:
         ip_version = socket.AF_INET6 if ":" in self.address.ip else socket.AF_INET
         sock = self.socket = socket.socket(ip_version)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(15)
         return sock
 
     def handle_version(self, packet):
-        self.version_payload = packet.payload
+        self.version_message = packet.payload
+        # FIXME: payload should default to b""
         my_verack_packet = Packet(
             command=b"verack", payload=b""
-        )  # FIXME: payload should default to b""
+        )
         self.socket.send(my_verack_packet.to_bytes())
 
     def handle_verack(self, packet):
@@ -69,10 +56,8 @@ class Connection:
 
     def handle_addr(self, packet):
         addr_message = AddrMessage.from_bytes(packet.payload)
-        # ignore "addr" messages containing just 1 address
-        if addr_message.addresses[0].ip != self.ip:
-            print("GOT REAL ADDRS")
-            self.addr_payload = packet.payload
+        if set([address.ip for addreses in addr_message]) != set([self.address.ip]):
+            self.addr_message = packet.payload
 
     def handle_packet(self, packet):
         command_to_handler = {
@@ -86,7 +71,7 @@ class Connection:
 
     def check_for_timeout(self):
         now = time.time()
-        duration = now - self.worker_start
+        duration = now - self.start
         needs_timout = duration > self.timeout
         if needs_timout:
             # Let's not treat this as an error for the moment
@@ -97,6 +82,7 @@ class Connection:
         return self.version_message is not None and self.addr_message is not None
 
     def _connect(self):
+        self.start = time.time()
         self.start_handshake()
         while not self.complete():
             self.check_for_timeout()
@@ -106,7 +92,6 @@ class Connection:
                 # For now we ditch this connection
                 raise e
             except Exception as e:
-                print("Packet.from_socket() error:", e)
                 continue
             self.handle_packet(packet)
 
@@ -114,7 +99,6 @@ class Connection:
         try:
             self._connect()
         except Exception as e:
-            print("ERROR!!!", e)
             self.error = str(e)
         finally:
             if self.socket:
@@ -157,21 +141,12 @@ class Crawler:
             self.workers.append(worker)
             worker.start()
 
-    def FIXME(self, address):
-        update_address(address)
-
-        # FIXME: this is the worst chunk of code i've ever written
-        # The problems is that we're working with 2 separate notions of "address"
-        if address.addr_payload:
-            addr_message = AddrMessage.from_bytes(address.addr_payload)
-            print("Received new addresses: ", addr_message.addresses)
-            insert_addresses(addr_message.addresses)
-
     def save_connection_outcome(self, connection):
         save_connection(connection)
-        save_version_message(connection.version_message)
-        save_addr_message(connection.addr_message)
         # Save connection.addr_message.addresses as well ...
+        if connection.addr_message:
+            x = AddrMessage.from_bytes(connection.addr_message)
+            insert_addresses(x.addresses)
 
     def crawl(self):
         self.spawn_workers()
@@ -193,13 +168,16 @@ class Crawler:
 
 def drop_tables():
     with db:
-        db.execute("DROP TABLE addresses")
+        db.execute("DROP TABLE IF EXISTS addresses")
+        db.execute("DROP TABLE IF EXISTS connections")
+        db.execute("DROP TABLE IF EXISTS version_messages")
+        db.execute("DROP TABLE IF EXISTS addr_messages")
 
 
 def recreate_tables():
     with db:
-        drop_tables(db)
-        create_tables(db)
+        drop_tables()
+        create_tables()
 
 
 def create_tables(db=db):
@@ -230,36 +208,54 @@ def create_tables(db=db):
         """
         )
         db.execute(
-            # FIXME add more columns
+            # FIXME columns
             """
             CREATE TABLE addr_messages (
-                id INTEGER PRIMARY KEY,
-                services INTEGER,
-                ip TEXT,
-                port INTEGER
+                raw BLOB,
+                connection_id INTEGER NOT NULL,
+                    FOREIGN KEY (connection_id) REFERENCES connections(id)
             )
         """
         )
         db.execute(
-            # FIXME add more columns
+            # FIXME columns
             """
-            CREATE TABLE version_message (
-                id INTEGER PRIMARY KEY,
-                version INTEGER,
-                user_agent TEXT
+            CREATE TABLE version_messages (
+                raw BLOB,
+                connection_id INTEGER NOT NULL,
+                    FOREIGN KEY (connection_id) REFERENCES connections(id)
             )
         """
         )
 
 
-def insert_connection(connection, db=db):
-    query = """
-        INSERT INTO connections (worker, start, stop, error, address_id)
-        VALUES (:worker, :start, :stop, :error, :address_id)
-    """
-    args = connection.__dict__
-    args["address_id"] = connection.address.id
-    db.execute(query, args)
+def save_connection(connection, db=db):
+    with db:
+        query = """
+            INSERT INTO connections (worker, start, stop, error, address_id)
+            VALUES (:worker, :start, :stop, :error, :address_id)
+        """
+        args = connection.__dict__
+        args["address_id"] = connection.address.id
+        cursor = db.execute(query, args)
+
+        connection_id = cursor.lastrowid  # kind of a hacky way of getting an cursor ...
+
+        if connection.version_message:
+            query = """
+                INSERT INTO version_messages (raw, connection_id)
+                VALUES (?, ?)
+            """
+            args = (connection.version_message, connection_id)
+            db.execute(query, args)
+
+        if connection.addr_message:
+            query = """
+                INSERT INTO addr_messages (raw, connection_id)
+                VALUES (?, ?)
+            """
+            args = (connection.addr_message, connection_id)
+            db.execute(query, args)
 
 
 def insert_addresses(addresses, db=db):
@@ -276,158 +272,31 @@ def insert_addresses(addresses, db=db):
                 return
 
 
-def update_address(address):
-    with db:
-        db.execute(
-            "REPLACE INTO addresses VALUES (:ip, :port, :worker, :worker_start, :worker_stop, :version_payload, :addr_payload, :error)",
-            address.__dict__,
-        )
-
-
-def next_addresses():
+def next_addresses(db=db):
     # FIXME: this blows up when we run out of addresses
     args_list = db.execute(
         """
-        SELECT * FROM addresses
-        WHERE worker_start IS NULL
+        SELECT *
+        FROM addresses
+        WHERE id not in (
+            SELECT address_id FROM connections
+        )
         LIMIT 100
     """
     ).fetchall()
-    return [Address(None, args[0], args[1], None) for args in args_list]
-
-
-#######################
-### For the monitor ###
-#######################
-
-
-def queued_count(db):
-    result = db.execute(
-        """
-        SELECT COUNT(*) FROM addresses
-        WHERE worker_start IS NULL
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def completed_count(db):
-    result = db.execute(
-        """
-        SELECT COUNT(*) FROM addresses
-        WHERE version_payload IS NOT NULL
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def failed_count(db):
-    result = db.execute(
-        """
-        SELECT COUNT(*) FROM addresses
-        WHERE error IS NOT NULL
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def total_count(db):
-    result = db.execute(
-        """
-        SELECT COUNT(*) FROM addresses
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def started_count(db):
-    # start time + worker non empty, worker_stop empty
-    result = db.execute(
-        """
-        SELECT COUNT(*) FROM addresses
-        WHERE worker_start IS NOT NULL
-            AND worker_stop IS NULL
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def crawler_start_time(db):
-    result = db.execute(
-        """
-        SELECT MIN(worker_start)
-        FROM addresses
-    """
-    ).fetchone()
-    result = result[0]  # FIXME
-    return result
-
-
-def worker_statuses(db):
-    # TODO: also query count(*) and display that ...
-    q = """
-    SELECT 
-        worker, ip, strftime('%s','now') - MAX(worker_start)
-    FROM 
-        addresses
-    WHERE 
-        worker IS NOT NULL 
-        AND worker_stop IS NULL
-    GROUP BY 
-        worker
-    """
-    result = db.execute(q).fetchall()
-    return sorted(result, key=lambda r: -int(r[0].split("-")[1]))
-    # result = db.execute(q).fetchall()
-    # addresses = [Address(*args) for args in result]
-    # return sorted(addresses, key=lambda address: int(address.worker.split("-")[1]))
-
-
-def crawler_report():
-    headers = ["Queued", "Completed", "Failed"]
-    rows = [[queued_count(db), completed_count(db), failed_count(db)]]
-    return tabulate(rows, headers)
-
-
-# TODO https://twitter.com/brianokken/status/1029880505750171648
-def worker_report():
-    headers = ["Worker Name", "Peer Address", "Elapsed"]
-    rows = worker_statuses(db)
-    return tabulate(rows, headers)
-
-
-def report():
-    c = crawler_report()
-    length = len(c.split("\n")[0])
-    padding_len = round((length - 7) / 2)
-    padding = " " * padding_len
-    print(padding + "===========" + padding)
-    print(padding + "| Crawler |" + padding)
-    print(padding + "===========" + padding)
-    print()
-    print(c)
-
-    print("\n\n")
-
-    print(worker_report())
+    # FIXME soooo dirty
+    return [Address(None, args[1], args[2], None, id_=args[0]) for args in args_list]
 
 
 if __name__ == "__main__":
     if sys.argv[1] == "crawl":
-        # recreate_tables(db)
-        # addresses = [
-        # Address("91.221.70.137", 8333),
-        # Address("92.255.176.109", 8333),
-        # Address("94.199.178.17", 8333),
-        # Address("213.250.21.112", 8333),
-        # ]
-        # insert_addresses(addresses)
-        addresses = []
-        Crawler(500).crawl()
+        recreate_tables()
+        addresses = [
+            Address(None, "91.221.70.137", 8333, None),
+            Address(None, "92.255.176.109", 8333, None),
+            Address(None, "94.199.178.17", 8333, None),
+            Address(None, "213.250.21.112", 8333, None),
+        ]
+        insert_addresses(addresses)
+        Crawler(16).crawl()
     if sys.argv[1] == "monitor":
-        report()
