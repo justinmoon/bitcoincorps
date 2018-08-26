@@ -191,6 +191,17 @@ class Crawler:
             time.sleep(2)
 
 
+def drop_tables():
+    with db:
+        db.execute("DROP TABLE addresses")
+
+
+def recreate_tables():
+    with db:
+        drop_tables(db)
+        create_tables(db)
+
+
 def create_tables(db=db):
     with db:
         db.execute(
@@ -241,15 +252,14 @@ def create_tables(db=db):
         )
 
 
-def drop_tables():
-    with db:
-        db.execute("DROP TABLE addresses")
-
-
-def recreate_tables():
-    with db:
-        drop_tables(db)
-        create_tables(db)
+def insert_connection(connection, db=db):
+    query = """
+        INSERT INTO connections (worker, start, stop, error, address_id)
+        VALUES (:worker, :start, :stop, :error, :address_id)
+    """
+    args = connection.__dict__
+    args["address_id"] = connection.address.id
+    db.execute(query, args)
 
 
 def insert_addresses(addresses, db=db):
