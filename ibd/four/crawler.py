@@ -45,9 +45,7 @@ class Connection:
     def handle_version(self, packet):
         self.version_message = packet.payload
         # FIXME: payload should default to b""
-        my_verack_packet = Packet(
-            command=b"verack", payload=b""
-        )
+        my_verack_packet = Packet(command=b"verack", payload=b"")
         self.socket.send(my_verack_packet.to_bytes())
 
     def handle_verack(self, packet):
@@ -56,7 +54,9 @@ class Connection:
 
     def handle_addr(self, packet):
         addr_message = AddrMessage.from_bytes(packet.payload)
-        if set([address.ip for addreses in addr_message]) != set([self.address.ip]):
+        if set([address.ip for address in addr_message.addresses]) != set(
+            [self.address.ip]
+        ):
             self.addr_message = packet.payload
 
     def handle_packet(self, packet):
@@ -300,3 +300,4 @@ if __name__ == "__main__":
         insert_addresses(addresses)
         Crawler(16).crawl()
     if sys.argv[1] == "monitor":
+        report()
