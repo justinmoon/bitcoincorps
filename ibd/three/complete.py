@@ -72,8 +72,19 @@ def compute_checksum(payload_bytes):
     return first_four_bytes
 
 
+def recvall(sock, n):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = b""
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data += packet
+    return data
+
+
 def read_payload(sock, length):
-    payload = sock.recv(length)
+    payload = recvall(sock, length)
     return payload
 
 

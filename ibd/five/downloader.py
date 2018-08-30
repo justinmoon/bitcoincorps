@@ -277,14 +277,6 @@ class TxOut:
         return cls(amount, script_pubkey)
 
 
-def send_getheaders(sock):
-    locator = construct_block_locator()
-    getheaders = GetHeaders(locator)
-    msg = Message(getheaders.command, getheaders.serialize())
-    sock.send(msg.serialize())
-    print("sent getheaders")
-
-
 # just stores the integer representation of the headers
 genesis = int("00000000000000000013424801fbec52484d7211c223beec97f02236a9b6ee03", 16)
 blocks = [genesis]
@@ -308,12 +300,28 @@ def construct_block_locator():
     return BlockLocator(items=hashes)
 
 
+def send_getheaders(sock):
+    locator = construct_block_locator()
+    getheaders = GetHeaders(locator)
+    msg = Packet(getheaders.command, getheaders.to_bytes())
+    sock.send(msg.to_bytes())
+    print("sent getheaders")
+
+
+def handle_packet(packet):
+    print(f'received "{packet.command}"')
+
+
 def main():
     address = ("91.221.70.137", 8333)
     sock = handshake(address)
+    send_getheaders(sock)
     while True:
-        packet = Packet.from_socket(sock)
-        print(packet)
+        try:
+            packet = Packet.from_socket(sock)
+        except Exception as e:
+            print(f'encountered "{e}" while new packet')
+        handle_packet(packet)
 
 
 if __name__ == "__main__":
