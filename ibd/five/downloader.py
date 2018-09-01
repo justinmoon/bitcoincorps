@@ -297,11 +297,12 @@ def construct_block_locator():
     hashes = []
 
     while height >= 0:
-        if len(hashes) >= 10:
-            step *= 2
         header = blocks[height]
         hashes.append(header)
         height -= step
+        # step starts doubling after the 11th hash
+        if len(hashes) > 10:
+            step *= 2
 
     if not blocks.index(genesis):
         blocks.append(genesis)

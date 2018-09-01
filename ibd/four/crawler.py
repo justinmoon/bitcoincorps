@@ -151,11 +151,13 @@ class Crawler:
     def crawl(self):
         self.spawn_workers()
         while True:
+            # give the workers tasks
             # Refill the queue if it is empty
             if self.address_queue.qsize() < 100:
                 for address in next_addresses():
                     self.address_queue.put(address)
 
+            # processes task results
             # Persist the updates to SQLite
             while self.connection_queue.qsize():
                 connection = self.connection_queue.get()
@@ -269,7 +271,7 @@ def insert_addresses(addresses, db=db):
                     address.__dict__,
                 )
             except sqlite3.IntegrityError:
-                return
+                continue
 
 
 def next_addresses(db=db):
@@ -298,6 +300,6 @@ if __name__ == "__main__":
             Address(None, "213.250.21.112", 8333, None),
         ]
         insert_addresses(addresses)
-        Crawler(16).crawl()
+        Crawler(500).crawl()
     if sys.argv[1] == "monitor":
         report()
