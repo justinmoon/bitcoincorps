@@ -1,5 +1,11 @@
+from bitcoin import rpc
+
 from ibd.three.complete import *
 from ibd.three.handshake import handshake
+
+# just stores the integer representation of the headers
+genesis = int("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", 16)
+blocks = [genesis]
 
 
 def double_sha256(b):
@@ -152,6 +158,14 @@ class BlockHeader:
         return f"<Header merkle_root={self.merkle_root}>"
 
 
+# FIXME
+def pretty(self):
+    hx = hex(self)[2:]  # remove "0x" prefix
+    sigfigs = len(hx)
+    padding = "0" * (64 - sigfigs)
+    return padding + hx
+
+
 class Block(BlockHeader):
     def __init__(
         self, version, prev_block, merkle_root, timestamp, bits, nonce, txn_count, txns
@@ -178,7 +192,7 @@ class Block(BlockHeader):
         )
 
     def __repr__(self):
-        return f"<Block merkle_root={self.merkle_root} | {len(self.txns)} txns>"
+        return f"<Block {self.pretty()} >"
 
 
 class Tx:
@@ -277,11 +291,6 @@ class TxOut:
         return cls(amount, script_pubkey)
 
 
-# just stores the integer representation of the headers
-genesis = int("00000000000000000013424801fbec52484d7211c223beec97f02236a9b6ee03", 16)
-blocks = [genesis]
-
-
 def construct_block_locator():
     step = 1
     height = len(blocks) - 1
@@ -308,8 +317,90 @@ def send_getheaders(sock):
     print("sent getheaders")
 
 
-def handle_packet(packet):
-    print(f'received "{packet.command}"')
+def update_blocks(block_headers):
+    for header in block_headers.headers:
+        # this is naive ...
+        # we add it to the blocks if prev_block is our current tip
+        if header.prev_block == blocks[-1]:
+            blocks.append(header.pow())
+        else:
+            break
+
+
+class InventoryItem:
+    def __init__(self, type_, hash_):
+        self.type = type_
+        self.hash = hash_
+
+    @classmethod
+    def from_stream(cls, s):
+        type_ = bytes_to_int(s.read(4))
+        hash_ = s.read(32)
+        return cls(type_, hash_)
+
+    def to_bytes(self):
+        msg = b""
+        msg += int_to_bytes(self.type, 4)
+        msg += self.hash
+        return msg
+
+    def __repr__(self):
+        return f"<InvItem {inv_map[self.type]} {self.hash}>"
+
+
+class GetData:
+    command = b"getdata"
+
+    def __init__(self, items=None):
+        if items is None:
+            self.items = []
+        else:
+            self.items = items
+
+    def to_bytes(self):
+        msg = int_to_var_int(len(self.items))
+        for item in self.items:
+            msg += item.to_bytes()
+        return msg
+
+    def __repr__(self):
+        return f"<Getdata {repr(self.inv)}>"
+
+
+def handle_headers_packet(packet, sock):
+    block_headers = Headers.from_stream(io.BytesIO(packet.payload))
+    print(f"{len(block_headers.headers)} new headers")
+    update_blocks(block_headers)
+
+    # after 500 headers, get the blocks
+    if len(blocks) < 5000:
+        send_getheaders(sock)
+    else:
+        print([pretty(block) for block in blocks[:100]])
+        items = [InventoryItem(2, int_to_bytes(hash_, 32)) for hash_ in blocks[:10]]
+        getdata = GetData(items=items)
+        packet = Packet(getdata.command, getdata.to_bytes())
+        sock.send(packet.to_bytes())
+
+    print(f"We now have {len(blocks)} headers")
+
+
+def handle_block_packet(packet, sock):
+    block = Block.from_stream(io.BytesIO(packet.payload))
+    print(block)
+
+
+def handle_packet(packet, sock):
+    command_to_handler = {
+        b"headers": handle_headers_packet,
+        b"block": handle_block_packet,
+    }
+    handler = command_to_handler.get(packet.command)
+    if handler:
+        print(f'handling "{packet.command}"')
+        handler(packet, sock)
+    else:
+        print(f'discarding "{packet.command}"')
 
 
 def main():
@@ -319,9 +410,12 @@ def main():
     while True:
         try:
             packet = Packet.from_socket(sock)
+        except EOFError as e:
+            print("Peer hung up")
+            return
         except Exception as e:
-            print(f'encountered "{e}" while new packet')
-        handle_packet(packet)
+            print(f'encountered "{e}" reading packet')
+        handle_packet(packet, sock)
 
 
 if __name__ == "__main__":
