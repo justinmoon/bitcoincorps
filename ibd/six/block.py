@@ -1,7 +1,7 @@
-from six.utils import (
+from ibd.six.utils import (
     int_to_bytes, bytes_to_int, int_to_var_int, read_var_int, double_sha256
 )
-from six.tx import Tx
+from ibd.six.tx import Tx
 
 
 class BlockLocator:

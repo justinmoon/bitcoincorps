@@ -1,10 +1,14 @@
 import socket
 import time
+from tabulate import tabulate
 
-from six.utils import (
+from ibd.six.utils import (
     read_command, read_magic, read_length, read_checksum, read_payload,
-    NETWORK_MAGIC, compute_checksum,
+    NETWORK_MAGIC, compute_checksum, int_to_bytes, encode_command,
+    fmt,
 )
+from ibd.six.msg import Address, VersionMessage, VerackMessage
+
 
 # FIXME: this is a hack
 def recover(sock):
@@ -71,7 +75,6 @@ class Packet:
 
     def __repr__(self):
         return f"<Message command={self.command}>"
-
 
 
 def handshake(address, log=True):

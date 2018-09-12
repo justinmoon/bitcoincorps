@@ -7,6 +7,12 @@ NETWORK_MAGIC = 0xD9B4BEF9
 IPV4_PREFIX = b"\x00" * 10 + b"\xff" * 2
 
 
+def double_sha256(b):
+    first_round = hashlib.sha256(b).digest()
+    second_round = hashlib.sha256(first_round).digest()
+    return second_round
+
+
 # FIXME
 def fmt(bytestr):
     string = str(bytestr)

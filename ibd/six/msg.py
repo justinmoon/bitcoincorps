@@ -1,12 +1,12 @@
 import io
 from tabulate import tabulate
-from six.utils import (
+from ibd.six.utils import (
     read_var_int, read_time, read_services, read_ip, time_to_bytes,
     services_to_bytes, read_port, ip_to_bytes, port_to_bytes, read_int,
     read_var_str, read_bool, int_to_bytes, bool_to_bytes, str_to_var_str,
     fmt, bytes_to_int, int_to_var_int
 )
-from six.block import BlockHeader
+from ibd.six.block import BlockHeader
 
 inv_map = {
     0: "ERROR",

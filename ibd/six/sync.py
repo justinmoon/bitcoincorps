@@ -1,10 +1,10 @@
 import io
 
 from ibd.six.utils import int_to_bytes
-from six.wire import Packet
-from six.msg import GetHeaders, Headers, GetData, InventoryItem
-from six.block import BlockLocator, Block
-from six.wire import handshake
+from ibd.six.wire import Packet
+from ibd.six.msg import GetHeaders, Headers, GetData, InventoryItem
+from ibd.six.block import BlockLocator, Block
+from ibd.six.wire import handshake
 
 # just stores the integer representation of the headers
 genesis = int("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", 16)

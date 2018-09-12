@@ -1,4 +1,4 @@
-from six.utils import (
+from ibd.six.utils import (
     bytes_to_int, read_var_int,
 )
 
