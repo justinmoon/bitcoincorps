@@ -9,7 +9,11 @@ from block import Block
 
 # just stores the integer representation of the headers
 genesis = int("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", 16)
-HEADERS = [genesis]
+
+data = {
+    "headers": [genesis],
+    "blocks": [],
+}
 
 
 def handshake(address):
@@ -41,19 +45,19 @@ def handshake(address):
 
 def construct_block_locator():
     step = 1
-    height = len(HEADERS) - 1
+    height = len(data["headers"]) - 1
     hashes = []
 
     while height >= 0:
-        header = HEADERS[height]
+        header = data["headers"][height]
         hashes.append(header)
         height -= step
         # step starts doubling after the 11th hash
         if len(hashes) > 10:
             step *= 2
 
-    if not HEADERS.index(genesis):
-        HEADERS.append(genesis)
+    if not data["headers"].index(genesis):
+        data["headers"].append(genesis)
 
     return BlockLocator(items=hashes)
 
@@ -70,8 +74,8 @@ def update_blocks(new_headers):
     for block in new_headers:
         # this is naive ...
         # we add it to the blocks if prev_block is our current tip
-        if int.from_bytes(block.prev_block, 'big') == HEADERS[-1]:
-            HEADERS.append(block.proof())
+        if int.from_bytes(block.prev_block, 'big') == data["headers"][-1]:
+            data["headers"].append(block.proof())
         else:
             print("out of order")
             break
@@ -83,15 +87,15 @@ def handle_headers_packet(packet, sock):
     update_blocks(msg.blocks)
 
     # after 1000 headers, get the blocks
-    if len(HEADERS) < 1000:
+    if len(data["headers"]) < 1000:
         send_getheaders(sock)
     else:
-        items = [InventoryItem(2, int_to_little_endian(hash_, 32)) for hash_ in HEADERS[:10]]
+        items = [InventoryItem(2, int_to_little_endian(hash_, 32)) for hash_ in data["headers"][:10]]
         getdata = GetData(items=items)
         packet = NetworkEnvelope(getdata.command, getdata.serialize())
         sock.send(packet.serialize())
 
-    print(f"We now have {len(HEADERS)} headers")
+    print(f"We now have {len(data['headers'])} headers")
 
 
 def handle_block_packet(packet, sock):
