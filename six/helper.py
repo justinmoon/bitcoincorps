@@ -1,14 +1,14 @@
-from subprocess import check_output
 from unittest import skip, TestCase, TestSuite, TextTestRunner
 
 import hashlib
-import math
+import socket
 
 
 SIGHASH_ALL = 1
 SIGHASH_NONE = 2
 SIGHASH_SINGLE = 3
 BASE58_ALPHABET = b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+IPV4_PREFIX = b"\x00" * 10 + b"\xff" * 2
 
 
 @skip("not a test")
@@ -204,6 +204,20 @@ def bytes_to_bit_field(some_bytes):
             # rightshift the byte 1
             byte >>= 1
     return flag_bits
+
+
+def bytes_to_ip(b):
+    if bytes(b[0:12]) == IPV4_PREFIX:  # IPv4
+        return socket.inet_ntop(socket.AF_INET, b[12:16])
+    else:  # IPv6
+        return socket.inet_ntop(socket.AF_INET6, b)
+
+
+def ip_to_bytes(ip):
+    if ":" in ip:  # determine if address is IPv6
+        return socket.inet_pton(socket.AF_INET6, ip)
+    else:
+        return IPV4_PREFIX + socket.inet_pton(socket.AF_INET, ip)
 
 
 def murmur3(data, seed=0):

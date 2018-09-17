@@ -11,6 +11,8 @@ from helper import (
     encode_varint,
     int_to_little_endian,
     little_endian_to_int,
+    bytes_to_ip,
+    ip_to_bytes,
     read_varint,
 )
 
@@ -344,3 +346,64 @@ class SimpleNode:
                 self.send(b'pong', envelope.payload)
         # return the last envelope we got
         return envelope
+
+
+class Address:
+    def __init__(self, services, ip, port, time, id_=None):
+        self.services = services
+        self.ip = ip
+        self.port = port
+        self.time = time
+        self.id = id_
+
+    @classmethod
+    def parse(cls, stream, version_msg=False):
+        if version_msg:
+            time = None
+        else:
+            time = little_endian_to_int(stream.read(4))
+        services = stream.read(8)
+        ip = bytes_to_ip(stream.read(16))
+        # 2 bytes, big endian
+        port = int.from_bytes(stream.read(2), 'big')
+        return cls(services, ip, port, time)
+
+    def serialize(self, version_msg=False):
+        result = b""
+        # FIXME: What's the right condition here
+        if self.time:
+            result += int_to_little_endian(self.time, 4)
+        result += self.services
+        result += ip_to_bytes(self.ip)
+        result += self.port.to_bytes(2, 'big')
+        return result
+
+    def tuple(self):
+        return (self.ip, self.port)
+
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+
+    def __repr__(self):
+        return f"<Address {self.ip}:{self.port}>"
+
+
+class AddrMessage:
+
+    command = b"addr"
+
+    def __init__(self, addresses):
+        self.addresses = addresses
+
+    @classmethod
+    def parse(cls, stream):
+        count = read_varint(stream)
+        address_list = []
+        for _ in range(count):
+            address_list.append(Address.parse(stream))
+        return cls(address_list)
+
+
+class AddrMessageTest:
+    ...
+
