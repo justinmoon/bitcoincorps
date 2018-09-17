@@ -70,8 +70,8 @@ def send_getheaders(sock):
     print("sent getheaders")
 
 
-def update_blocks(new_headers):
-    for block in new_headers:
+def persist_headers(headers):
+    for block in headers:
         # this is naive ...
         # we add it to the blocks if prev_block is our current tip
         if int.from_bytes(block.prev_block, 'big') == data["headers"][-1]:
@@ -84,7 +84,7 @@ def update_blocks(new_headers):
 def handle_headers_packet(packet, sock):
     msg = HeadersMessage.parse(io.BytesIO(packet.payload))
     print(f"{len(msg.blocks)} new headers")
-    update_blocks(msg.blocks)
+    persist_headers(msg.blocks)
 
     # after 1000 headers, get the blocks
     if len(data["headers"]) < 1000:
