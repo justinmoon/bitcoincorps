@@ -103,14 +103,17 @@ class Block:
         lowest = 0xffff * 2**(8*(0x1d-3))
         return lowest / self.target()
 
-    def check_pow(self):
-        '''Returns whether this block satisfies proof of work'''
+    def proof(self):
+        '''Calculate the proof-of-work for this block'''
         # get the double_sha256 of the serialization of this block
         sha = double_sha256(self.serialize())
         # interpret this hash as a little-endian number
-        proof = little_endian_to_int(sha)
+        return little_endian_to_int(sha)
+
+    def check_pow(self):
+        '''Returns whether this block satisfies proof of work'''
         # return whether this integer is less than the target
-        return proof < self.target()
+        return self.proof() < self.target()
 
     def validate_merkle_root(self):
         '''Gets the merkle root of the tx_hashes and checks that it's

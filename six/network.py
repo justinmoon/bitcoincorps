@@ -24,6 +24,15 @@ COMPACT_BLOCK_DATA_TYPE = 4
 NETWORK_MAGIC = b'\xf9\xbe\xb4\xd9'
 TESTNET_NETWORK_MAGIC = b'\x0b\x11\x09\x07'
 
+inv_map = {
+    0: "ERROR",
+    1: "MSG_TX",
+    2: "MSG_BLOCK",
+    3: "MSG_FILTERED_BLOCK",
+    4: "MSG_CMPCT_BLOCK",
+}
+
+
 
 class NetworkEnvelope:
 
@@ -186,29 +195,34 @@ class VersionMessageTest(TestCase):
         self.assertEqual(v.serialize().hex(), '7f11010000000000000000000000000000000000000000000000000000000000000000000000ffff000000008d20000000000000000000000000000000000000ffff000000008d2000000000000000001b2f70726f6772616d6d696e67626c6f636b636861696e3a302e312f0000000001')
     
 
-class GetHeadersMessage:
-
-    def __init__(self, version=70015, num_hashes=1, starting_block=None, ending_block=None):
-        self.version = version
-        self.num_hashes = num_hashes
-        if starting_block is None:
-            raise RuntimeError('a starting block is required')
-        self.starting_block = starting_block
-        if ending_block is None:
-            self.ending_block = b'\x00' * 32
+class BlockLocator:
+    def __init__(self, items=None, ):
+        # self.items is a list of block hashes ... not sure on data type
+        if items:
+            self.items = items
         else:
-            self.ending_block = ending_block
+            self.items = []
 
     def serialize(self):
-        '''Serialize this message to send over the network'''
-        # protocol version is 4 bytes little-endian
+        result = encode_varint(len(self.items))
+        for hash_ in self.items:
+            result += int_to_little_endian(hash_, 32)
+        return result
+
+
+class GetHeaders:
+
+    command = b"getheaders"
+
+    def __init__(self, locator, hashstop=0, version=70015):
+        self.locator = locator
+        self.hashstop = hashstop
+        self.version = version
+
+    def serialize(self):
         result = int_to_little_endian(self.version, 4)
-        # number of hashes is a varint
-        result += encode_varint(self.num_hashes)
-        # starting block is in little-endian
-        result += self.starting_block[::-1]
-        # ending block is also in little-endian
-        result += self.ending_block[::-1]
+        result += self.locator.serialize()
+        result += int_to_little_endian(self.hashstop, 32)
         return result
 
     
@@ -242,6 +256,42 @@ class HeadersMessage:
                 raise RuntimeError('number of txs not 0')
         # return a class instance
         return cls(blocks)
+
+class InventoryItem:
+    def __init__(self, type_, hash_):
+        self.type = type_
+        self.hash = hash_
+
+    @classmethod
+    def parse(cls, s):
+        type_ = little_endian_to_int(s.read(4))
+        hash_ = s.read(32)
+        return cls(type_, hash_)
+
+    def serialize(self):
+        msg = b""
+        msg += int_to_little_endian(self.type, 4)
+        msg += self.hash
+        return msg
+
+    def __repr__(self):
+        return f"<InvItem {inv_map[self.type]} {self.hash}>"
+
+
+class GetData:
+    command = b"getdata"
+
+    def __init__(self, items=None):
+        if items is None:
+            self.items = []
+        else:
+            self.items = items
+
+    def serialize(self):
+        msg = encode_varint(len(self.items))
+        for item in self.items:
+            msg += item.serialize()
+        return msg
 
     
 class HeadersMessageTest(TestCase):
