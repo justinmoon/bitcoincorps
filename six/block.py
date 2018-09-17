@@ -8,24 +8,27 @@ from helper import (
     merkle_parent,
     merkle_parent_level,
     merkle_root,
+    read_varint,
 )
+from tx import Tx
 
 
-class Block:
+class BlockHeader:
 
     def __init__(self, version, prev_block, merkle_root, timestamp, bits, nonce, tx_hashes=None):
+        # FIXME num_txns belongs here
         self.version = version
         self.prev_block = prev_block
         self.merkle_root = merkle_root
         self.timestamp = timestamp
         self.bits = bits
         self.nonce = nonce
-        self.tx_hashes = tx_hashes
+        self.tx_hashes = tx_hashes  # FIXME: this is kinda jank
         self.merkle_tree = None
 
     @classmethod
     def parse(cls, s):
-        '''Takes a byte stream and parses a block. Returns a Block object'''
+        '''Takes a byte stream and parses a block. Returns a BlockHeader object'''
         # s.read(n) will read n bytes from the stream
         # version - 4 bytes, little endian, interpret as int
         version = little_endian_to_int(s.read(4))
@@ -129,80 +132,80 @@ class Block:
         return root[::-1] == self.merkle_root
 
 
-class BlockTest(TestCase):
+class BlockHeaderTest(TestCase):
 
     def test_parse(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertEqual(block.version, 0x20000002)
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertEqual(block_header.version, 0x20000002)
         want = bytes.fromhex('000000000000000000fd0c220a0a8c3bc5a7b487e8c8de0dfa2373b12894c38e')
-        self.assertEqual(block.prev_block, want)
+        self.assertEqual(block_header.prev_block, want)
         want = bytes.fromhex('be258bfd38db61f957315c3f9e9c5e15216857398d50402d5089a8e0fc50075b')
-        self.assertEqual(block.merkle_root, want)
-        self.assertEqual(block.timestamp, 0x59a7771e)
-        self.assertEqual(block.bits, bytes.fromhex('e93c0118'))
-        self.assertEqual(block.nonce, bytes.fromhex('a4ffd71d'))
+        self.assertEqual(block_header.merkle_root, want)
+        self.assertEqual(block_header.timestamp, 0x59a7771e)
+        self.assertEqual(block_header.bits, bytes.fromhex('e93c0118'))
+        self.assertEqual(block_header.nonce, bytes.fromhex('a4ffd71d'))
 
     def test_serialize(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertEqual(block.serialize(), block_raw)
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertEqual(block_header.serialize(), block_header_raw)
 
     def test_hash(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertEqual(block.hash(), bytes.fromhex('0000000000000000007e9e4c586439b0cdbe13b1370bdd9435d76a644d047523'))
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertEqual(block_header.hash(), bytes.fromhex('0000000000000000007e9e4c586439b0cdbe13b1370bdd9435d76a644d047523'))
 
 
     def test_bip9(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertTrue(block.bip9())
-        block_raw = bytes.fromhex('0400000039fa821848781f027a2e6dfabbf6bda920d9ae61b63400030000000000000000ecae536a304042e3154be0e3e9a8220e5568c3433a9ab49ac4cbb74f8df8e8b0cc2acf569fb9061806652c27')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertFalse(block.bip9())
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertTrue(block_header.bip9())
+        block_header_raw = bytes.fromhex('0400000039fa821848781f027a2e6dfabbf6bda920d9ae61b63400030000000000000000ecae536a304042e3154be0e3e9a8220e5568c3433a9ab49ac4cbb74f8df8e8b0cc2acf569fb9061806652c27')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertFalse(block_header.bip9())
 
     def test_bip91(self):
-        block_raw = bytes.fromhex('1200002028856ec5bca29cf76980d368b0a163a0bb81fc192951270100000000000000003288f32a2831833c31a25401c52093eb545d28157e200a64b21b3ae8f21c507401877b5935470118144dbfd1')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertTrue(block.bip91())
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertFalse(block.bip91())
+        block_header_raw = bytes.fromhex('1200002028856ec5bca29cf76980d368b0a163a0bb81fc192951270100000000000000003288f32a2831833c31a25401c52093eb545d28157e200a64b21b3ae8f21c507401877b5935470118144dbfd1')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertTrue(block_header.bip91())
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertFalse(block_header.bip91())
 
     def test_bip141(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertTrue(block.bip141())
-        block_raw = bytes.fromhex('0000002066f09203c1cf5ef1531f24ed21b1915ae9abeb691f0d2e0100000000000000003de0976428ce56125351bae62c5b8b8c79d8297c702ea05d60feabb4ed188b59c36fa759e93c0118b74b2618')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertFalse(block.bip141())
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertTrue(block_header.bip141())
+        block_header_raw = bytes.fromhex('0000002066f09203c1cf5ef1531f24ed21b1915ae9abeb691f0d2e0100000000000000003de0976428ce56125351bae62c5b8b8c79d8297c702ea05d60feabb4ed188b59c36fa759e93c0118b74b2618')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertFalse(block_header.bip141())
 
     def test_target(self):
-        block_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertEqual(block.target(), 0x13ce9000000000000000000000000000000000000000000)
-        self.assertEqual(int(block.difficulty()), 888171856257)
+        block_header_raw = bytes.fromhex('020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertEqual(block_header.target(), 0x13ce9000000000000000000000000000000000000000000)
+        self.assertEqual(int(block_header.difficulty()), 888171856257)
 
     def test_check_pow(self):
-        block_raw = bytes.fromhex('04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec1')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertTrue(block.check_pow())
-        block_raw = bytes.fromhex('04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec0')
-        stream = BytesIO(block_raw)
-        block = Block.parse(stream)
-        self.assertFalse(block.check_pow())
+        block_header_raw = bytes.fromhex('04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec1')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertTrue(block_header.check_pow())
+        block_header_raw = bytes.fromhex('04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec0')
+        stream = BytesIO(block_header_raw)
+        block_header = BlockHeader.parse(stream)
+        self.assertFalse(block_header.check_pow())
 
     def test_validate_merkle_root(self):
         hashes_hex = [
@@ -221,6 +224,40 @@ class BlockTest(TestCase):
         ]
         hashes = [bytes.fromhex(x) for x in hashes_hex]
         stream = BytesIO(bytes.fromhex('00000020fcb19f7895db08cadc9573e7915e3919fb76d59868a51d995201000000000000acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed691cfa85916ca061a00000000'))
-        block = Block.parse(stream)
-        block.tx_hashes = hashes
-        self.assertTrue(block.validate_merkle_root())
+        block_header = BlockHeader.parse(stream)
+        block_header.tx_hashes = hashes
+        self.assertTrue(block_header.validate_merkle_root())
+
+
+class Block(BlockHeader):
+
+    def __init__(
+        self, version, prev_block, merkle_root, timestamp, bits, nonce, txns
+    ):
+        super().__init__(
+            version, prev_block, merkle_root, timestamp, bits, nonce
+        )
+        self.txns = txns
+
+    @classmethod
+    def parse(cls, s):
+        '''Takes a byte stream and parses a block. Returns a BlockHeader object'''
+        # s.read(n) will read n bytes from the stream
+        # version - 4 bytes, little endian, interpret as int
+        version = little_endian_to_int(s.read(4))
+        # prev_block - 32 bytes, little endian (use [::-1] to reverse)
+        prev_block = s.read(32)[::-1]
+        # merkle_root - 32 bytes, little endian (use [::-1] to reverse)
+        merkle_root = s.read(32)[::-1]
+        # timestamp - 4 bytes, little endian, interpret as int
+        timestamp = little_endian_to_int(s.read(4))
+        # bits - 4 bytes
+        bits = s.read(4)
+        # nonce - 4 bytes
+        nonce = s.read(4)
+        # read the actual transactions
+        num_txns = read_varint(s)
+        txns = [Tx.parse(s) for _ in range(num_txns)]
+        # initialize class
+        return cls(version, prev_block, merkle_root, timestamp, bits, nonce, txns)
+
