@@ -78,6 +78,7 @@ def read_version(stream):
 def read_bool(stream):
     integer = read_int(stream, 1)
     boolean = bool(integer)
+    return boolean
 
 
 def read_timestamp(stream):
