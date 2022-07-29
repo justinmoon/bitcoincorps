@@ -38,7 +38,7 @@ kiwisolver==1.0.1; python_version != '3.0.*'
 markupsafe==1.0
 matplotlib==2.2.2
 mccabe==0.6.1
-mistune==0.8.3
+mistune==2.0.3
 more-itertools==4.3.0
 mypy==0.620
 nbconvert==5.3.1
